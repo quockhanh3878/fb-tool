@@ -101,23 +101,33 @@ fb-tool/
 
 ## Chạy thử nhanh
 
-```bash
-cd commhunter
-pip install -r requirements.txt
-playwright install chromium
+> **Repo dùng venv riêng ở `.venv/`.** Thư viện Python đã cài sẵn trong đó — không
+> `pip install` vào Python chung của máy. Dựng lại từ đầu (khi mới clone hoặc venv hỏng):
+>
+> ```powershell
+> python -m venv .venv
+> .venv\Scripts\python.exe -m pip install -r backend/requirements.txt -r commhunter/requirements.txt
+> .venv\Scripts\python.exe -m playwright install chromium   # bản dự phòng khi máy không có Chrome
+> ```
 
-cp configs/example.yaml configs/khach.yaml     # sửa cho đúng khách hàng
+Chạy từ **thư mục gốc repo**, mọi lệnh Python đều gọi qua venv:
+
+```powershell
+copy commhunter\configs\example.yaml commhunter\configs\khach.yaml   # sửa cho đúng khách hàng
 # Đặt OPENAI_API_KEY / TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID vào file .env ở thư mục gốc
 
-python commhunter.py status --config configs/khach.yaml            # kiểm tra trước khi chạy
-python commhunter.py login  --config configs/khach.yaml --profile scout
-python commhunter.py login  --config configs/khach.yaml --profile shooter
-python commhunter.py run    --config configs/khach.yaml
+.venv\Scripts\python.exe commhunter\commhunter.py status --config commhunter\configs\khach.yaml
+.venv\Scripts\python.exe commhunter\commhunter.py login  --config commhunter\configs\khach.yaml --profile scout
+.venv\Scripts\python.exe commhunter\commhunter.py login  --config commhunter\configs\khach.yaml --profile shooter
+.venv\Scripts\python.exe commhunter\commhunter.py run    --config commhunter\configs\khach.yaml
 
-python tests/test_pipeline.py                  # smoke test, không cần mạng
-python tests/test_browser.py                   # test vân tay + cấu hình trình duyệt
-python tests/test_browser.py --live            # + mở Chrome thật kiểm chứng
+.venv\Scripts\python.exe commhunter\tests\test_pipeline.py          # smoke test, không cần mạng
+.venv\Scripts\python.exe commhunter\tests\test_browser.py           # test vân tay + cấu hình trình duyệt
+.venv\Scripts\python.exe commhunter\tests\test_browser.py --live    # + mở Chrome thật kiểm chứng
 ```
+
+> Gõ `python` trần là chạy nhầm Python chung của máy — thiếu thư viện, hoặc lệch phiên bản
+> làm mọi bộ test chết ngay ở bước `import`. Luôn đi qua `.venv\Scripts\python.exe`.
 
 ### Trình duyệt: Chrome thật + vân tay theo nick + chế độ attach
 
@@ -155,16 +165,15 @@ docker compose -f backend/docker-compose.yaml --profile dashboard up -d --build
 
 ### Cách 2 — Chạy tay khi phát triển (SQLite, không cần Docker)
 
-```bash
+```powershell
 cd backend
-pip install -r requirements.txt
-export DATABASE_URL="sqlite+aiosqlite:///./data/commhunter_api.db"
-alembic upgrade head
-uvicorn app.main:app --reload                  # http://localhost:8000/docs
-python tests/test_api.py                       # 132/132 PASS, offline
+$env:DATABASE_URL = "sqlite+aiosqlite:///./data/commhunter_api.db"
+..\.venv\Scripts\alembic.exe upgrade head
+..\.venv\Scripts\uvicorn.exe app.main:app --reload   # http://localhost:8000/docs
+..\.venv\Scripts\python.exe tests\test_api.py        # 243/243 PASS, offline
 
-cd ../frontend
-npm install && npm run dev                     # http://localhost:3000
+cd ..\frontend
+npm install; npm run dev                             # http://localhost:3000
 ```
 
 ### Soạn nội dung không bị lặp

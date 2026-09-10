@@ -30,8 +30,10 @@ Chỉ việc thật sự lớn (feature nhiều file, audit sâu) mới mở tr�
 - **`ai-comment-bot-main/`, `fbn-main/`, `openclaw-skills-main/` là kho THAM KHẢO, chỉ đọc.** Không sửa, không import trực tiếp, không đưa vào đường chạy thật. Cần kỹ thuật gì thì **chép có chọn lọc + ghi nguồn** vào module của mình, và bổ sung `NOTICE` nếu là mã có license.
 - **`chrome-debug-profile/`** là profile Chrome dùng để test tay qua CDP — dữ liệu runtime, không phải mã nguồn. Không đọc, không in nội dung, không commit (§7).
 - **Repo có git** (khởi tạo 10/09/2026, nhánh `main`, chưa có remote). Quy tắc dùng git ở §14 — đọc trước khi commit lần đầu.
-- **Python 3.11 + `pip`**, chạy trên **Windows / PowerShell**. Frontend dùng **`npm`** (có `package-lock.json`) — không đổi sang pnpm/yarn.
-- Backend và `commhunter/` là hai runtime **riêng biệt**, mỗi bên một `requirements.txt`. Không tạo import chéo `backend/app` ↔ `commhunter/`; logic dùng chung thì chép sang kèm test riêng, hoặc nêu đề xuất tách package trước khi làm.
+- **Python chạy trong venv riêng của repo: `.venv/` ở gốc** (Python 3.11, dựng 10/09/2026). **Mọi lệnh Python đều phải đi qua nó** — `.venv\Scripts\python.exe <script>` — kể cả `pip`, `alembic`, `uvicorn`, `playwright`. Gọi `python` trần là chạy nhầm Python global của máy (dùng chung với dự án khác, đã từng lệch phiên bản làm chết toàn bộ test). Không bao giờ `pip install` vào Python global cho repo này.
+- Venv cài **cả hai** `requirements.txt` (backend pin cứng, commhunter dùng khoảng) — thêm thư viện mới phải kiểm không phá pin của bên kia, và ghi vào đúng file `requirements.txt` của bên dùng nó.
+- Chạy trên **Windows / PowerShell**. Frontend dùng **`npm`** (có `package-lock.json`) — không đổi sang pnpm/yarn.
+- Backend và `commhunter/` là hai runtime **riêng biệt** dù dùng chung venv. Không tạo import chéo `backend/app` ↔ `commhunter/`; logic dùng chung thì chép sang kèm test riêng, hoặc nêu đề xuất tách package trước khi làm.
 
 ---
 
@@ -44,8 +46,8 @@ Không bỏ bước, không đảo thứ tự.
    - **Triệu chứng ≠ căn nguyên.** "Comment không đăng được" có thể là selector đổi, rate limit chặn, checkpoint, hay state machine khóa nick. Trước khi sửa, Grep hết caller của hàm đang nghi — một guard trong hàm dùng chung nhỏ hơn nhiều so với guard rải ở từng caller, và vá đúng một đường đi sẽ để lại mọi caller anh em vẫn hỏng.
 2. **Tự lập brief** — vai/phạm vi · 1–5 việc con · pattern/file sẽ theo hoặc mở rộng · ràng buộc chính (auth, error handling, kiểu dữ liệu, style, không refactor lớn) · sản phẩm đầu ra. Không cần dump brief cho anh Ber, nhưng câu trả lời phải đi đúng hình dạng đó.
 3. **Tiêu chí nghiệm thu — 2–5 tiêu chí kiểm chứng được, viết TRƯỚC khi gõ code**, mỗi tiêu chí kèm đúng câu lệnh để kiểm.
-   - ĐƯỢC: `Cho một kịch bản spintax 3 nhóm, Khi sinh biến thể, Thì biến thể khác 30 comment gần nhất (Jaccard < 0.82)` → `python commhunter/tests/test_templates.py` PASS
-   - ĐƯỢC: `python backend/tests/test_api.py` = 165/165 PASS · `npx tsc --noEmit` = 0 lỗi
+   - ĐƯỢC: `Cho một kịch bản spintax 3 nhóm, Khi sinh biến thể, Thì biến thể khác 30 comment gần nhất (Jaccard < 0.82)` → `.venv\Scripts\python.exe commhunter/tests/test_templates.py` PASS
+   - ĐƯỢC: `.venv\Scripts\python.exe backend/tests/test_api.py` = 243/243 PASS · `npx tsc --noEmit` = 0 lỗi
    - CẤM: "chạy đúng rồi", "UI đẹp hơn", "đã fix bug" — không kiểm chứng được.
      Đây chính là thứ bước 6 đối chiếu. Không có tiêu chí = không có cơ sở nói DONE, mọi lời "xong rồi" đều là đoán.
 4. **Khảo sát** mã/tài liệu hiện có trước khi sửa; tái dùng helper/hợp đồng đã có (§4); ưu tiên diff nhỏ nhất.
@@ -114,13 +116,15 @@ Ràng buộc vận hành: đọc schema tool trước khi gọi MCP (không đo�
 Bộ test hiện có (chạy **hoàn toàn offline**, không cần Facebook / OpenAI / Docker / mạng):
 
 ```bash
-python commhunter/tests/test_pipeline.py    # 104 assertion — pipeline CLI, anti-ban, hồi quy nợ kỹ thuật
-python commhunter/tests/test_templates.py   # kịch bản spintax, chống lặp lời
-python commhunter/tests/test_browser.py     # vân tay + cấu hình trình duyệt (thêm --live để mở Chrome thật)
-python backend/tests/test_api.py            # 165 assertion — 51 path/65 operation, cách ly đa khách, quota, state machine
-cd frontend; npx tsc --noEmit               # TypeScript strict, 0 lỗi
-cd frontend; npx next build                 # 13 route, 0 lỗi
+.venv\Scripts\python.exe commhunter/tests/test_pipeline.py    # 104 assertion — pipeline CLI, anti-ban, hồi quy nợ kỹ thuật
+.venv\Scripts\python.exe commhunter/tests/test_templates.py   # 8 assertion — kho mẫu comment, chống lặp lời
+.venv\Scripts\python.exe commhunter/tests/test_browser.py     # 23 assertion — vân tay + cấu hình trình duyệt (thêm --live để mở Chrome thật)
+.venv\Scripts\python.exe backend/tests/test_api.py            # 243 assertion — 51 path/65 operation, cách ly đa khách, quota, state machine
+cd frontend; npx tsc --noEmit                                 # TypeScript strict, 0 lỗi
+cd frontend; npx next build                                   # 13 route, 0 lỗi
 ```
+
+**Test chết ngay ở bước `import` (pydantic, openai, playwright…) gần như luôn là chạy nhầm Python global, không phải lỗi code.** Kiểm bằng `.venv\Scripts\python.exe -c "import sys; print(sys.executable)"` — phải in ra đường dẫn trong `.venv`. Đừng đi sửa mã nguồn trước khi loại trừ khả năng này.
 
 - **Không chạy full suite trừ khi được yêu cầu.** Bắt đầu từ bộ test nhỏ nhất phủ được hành vi vừa đổi; leo thang: test đơn vị đúng module → bộ test của tầng đó → build frontend → E2E/chạy thật (phải xin phép).
 - Ngân sách: mỗi lệnh ≤10 phút, tổng tự chạy ≤15 phút/tác vụ.
