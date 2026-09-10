@@ -1,0 +1,334 @@
+from __future__ import annotations
+
+from collections.abc import Iterator, Sequence
+from contextlib import contextmanager
+from datetime import datetime, timezone
+
+import pytest
+from loguru import logger
+
+from fbn.exceptions import DeliveryError
+from fbn.logging import configure_logging
+from fbn.models import (
+    GroupRef,
+    ObservationBatch,
+    PendingNotification,
+    Post,
+    ScanPolicy,
+    ScanResult,
+)
+from fbn.monitor import MonitorService
+from fbn.notifications import render_digest_chunks
+
+NOW = datetime(2026, 7, 28, tzinfo=timezone.utc)
+GROUP = GroupRef("group", "https://www.facebook.com/groups/group/")
+POST = Post(
+    group_key="group",
+    post_id="123",
+    url="https://www.facebook.com/groups/group/posts/123/",
+    text="Post body",
+    author="Author",
+    observed_at=NOW,
+    position=0,
+)
+PENDING = PendingNotification(
+    event_id="event-123",
+    group_key="group",
+    post_id="123",
+    url=POST.url,
+    author=POST.author,
+    body=POST.text,
+    position=0,
+    created_at=NOW,
+    attempts=0,
+)
+
+
+class FakeSource:
+    def __init__(self) -> None:
+        self.boundary_post_id: str | None = None
+
+    def fetch_recent(
+        self,
+        group: GroupRef,
+        policy: ScanPolicy,
+        *,
+        boundary_post_id: str | None = None,
+    ) -> ScanResult:
+        assert group is GROUP
+        self.boundary_post_id = boundary_post_id
+        return ScanResult((POST,), "feed", 0, False)
+
+
+class FakeState:
+    def __init__(
+        self,
+        batch: ObservationBatch,
+        *,
+        boundary_post_id: str | None = None,
+    ) -> None:
+        self.batch = batch
+        self.boundary_post_id = boundary_post_id
+        self.current_pending = list(batch.pending)
+        self.delivered: list[str] = []
+        self.failed: list[tuple[list[str], str]] = []
+        self.observe_kwargs: dict[str, object] = {}
+        self.lock_events: list[str] = []
+
+    @contextmanager
+    def run_lock(self) -> Iterator[None]:
+        self.lock_events.append("acquired")
+        try:
+            yield
+        finally:
+            self.lock_events.append("released")
+
+    def notification_boundary(self, group: GroupRef) -> str | None:
+        assert group is GROUP
+        return self.boundary_post_id
+
+    def observe(self, *args: object, **kwargs: object) -> ObservationBatch:
+        self.observe_kwargs = kwargs
+        return self.batch
+
+    def pending(self, group: GroupRef) -> tuple[PendingNotification, ...]:
+        assert group is GROUP
+        return tuple(self.current_pending)
+
+    def mark_delivered(
+        self,
+        event_ids: Sequence[str],
+        delivered_at: datetime | None = None,
+    ) -> None:
+        self.lock_events.append("marked")
+        self.delivered.extend(event_ids)
+        self.current_pending = [
+            item for item in self.current_pending if item.event_id not in event_ids
+        ]
+
+    def mark_delivery_failed(self, event_ids: Sequence[str], error: str) -> None:
+        self.failed.append((list(event_ids), error))
+
+
+class FakeSink:
+    def __init__(
+        self,
+        error: Exception | None = None,
+        *,
+        fail_on_call: int = 1,
+    ) -> None:
+        self.error = error
+        self.fail_on_call = fail_on_call
+        self.sent = []
+
+    def send(self, notification: object) -> None:
+        if self.error and len(self.sent) + 1 == self.fail_on_call:
+            raise self.error
+        self.sent.append(notification)
+
+
+def test_baseline_without_pending_does_not_notify() -> None:
+    state = FakeState(ObservationBatch(True, 1, 0, ()))
+    sink = FakeSink()
+
+    summary = MonitorService(FakeSource(), state, sink).run_once(GROUP, ScanPolicy())
+
+    assert summary.baseline is True
+    assert summary.new_posts == 0
+    assert summary.delivered == 0
+    assert sink.sent == []
+    assert "same_day_only" not in state.observe_kwargs
+
+
+def test_pending_is_delivered_then_marked() -> None:
+    state = FakeState(ObservationBatch(False, 1, 1, (PENDING,)))
+    sink = FakeSink()
+
+    summary = MonitorService(FakeSource(), state, sink).run_once(GROUP, ScanPolicy())
+
+    assert len(sink.sent) == 1
+    assert state.delivered == ["event-123"]
+    assert summary.delivered == 1
+    assert summary.pending == 0
+
+
+def test_source_looks_for_the_stored_notification_boundary() -> None:
+    state = FakeState(
+        ObservationBatch(True, 1, 0, ()),
+        boundary_post_id="remembered-post",
+    )
+    source = FakeSource()
+
+    MonitorService(source, state, FakeSink()).run_once(GROUP, ScanPolicy())
+
+    assert source.boundary_post_id == "remembered-post"
+
+
+def test_run_lock_encloses_fetch_and_delivery() -> None:
+    state = FakeState(ObservationBatch(False, 1, 1, (PENDING,)))
+
+    class LockAwareSource(FakeSource):
+        def fetch_recent(
+            self,
+            group: GroupRef,
+            policy: ScanPolicy,
+            *,
+            boundary_post_id: str | None = None,
+        ) -> ScanResult:
+            state.lock_events.append("fetched")
+            return super().fetch_recent(
+                group,
+                policy,
+                boundary_post_id=boundary_post_id,
+            )
+
+    class LockAwareSink(FakeSink):
+        def send(self, notification: object) -> None:
+            state.lock_events.append("sent")
+            super().send(notification)
+
+    MonitorService(LockAwareSource(), state, LockAwareSink()).run_once(
+        GROUP,
+        ScanPolicy(),
+    )
+
+    assert state.lock_events == [
+        "acquired",
+        "fetched",
+        "sent",
+        "marked",
+        "released",
+    ]
+
+
+def test_operational_logs_include_counts_but_not_post_content() -> None:
+    state = FakeState(ObservationBatch(False, 1, 1, (PENDING,)))
+    sink = FakeSink()
+    records: list[dict[str, object]] = []
+
+    def capture_record(message: object) -> None:
+        record = message.record.copy()  # type: ignore[attr-defined]
+        record["extra"] = record["extra"].copy()
+        records.append(record)
+
+    configure_logging(verbose=True)
+    capture_id = logger.add(
+        capture_record,
+        level="DEBUG",
+        filter=lambda record: record["extra"].get("service") == "fbn",
+    )
+    try:
+        MonitorService(FakeSource(), state, sink).run_once(GROUP, ScanPolicy())
+    finally:
+        logger.remove(capture_id)
+        logger.remove()
+        logger.disable("fbn")
+
+    assert any(
+        record["message"] == "Scan completed"
+        and record["extra"]["group_key"] == "group"  # type: ignore[index]
+        and record["extra"]["page_state"] == "feed"  # type: ignore[index]
+        and record["extra"]["post_count"] == 1  # type: ignore[index]
+        for record in records
+    )
+    assert any(
+        record["message"] == "Notification chunk delivery committed"
+        and record["extra"]["group_key"] == "group"  # type: ignore[index]
+        and record["extra"]["post_count"] == 1  # type: ignore[index]
+        for record in records
+    )
+    output = str(records)
+    assert POST.text not in output
+    assert POST.url not in output
+
+
+def test_inserted_but_ineligible_posts_are_not_reported_as_new() -> None:
+    state = FakeState(ObservationBatch(False, 2, 0, ()))
+    sink = FakeSink()
+
+    summary = MonitorService(FakeSource(), state, sink).run_once(
+        GROUP,
+        ScanPolicy(),
+    )
+
+    assert summary.new_posts == 0
+    assert summary.delivered == 0
+    assert sink.sent == []
+
+
+def test_delivery_failure_is_recorded_and_remains_pending() -> None:
+    state = FakeState(ObservationBatch(False, 1, 1, (PENDING,)))
+    sink = FakeSink(DeliveryError("redacted failure"))
+
+    with pytest.raises(DeliveryError, match="redacted"):
+        MonitorService(FakeSource(), state, sink).run_once(GROUP, ScanPolicy())
+
+    assert state.delivered == []
+    assert state.failed == [(["event-123"], "redacted failure")]
+    assert state.pending(GROUP) == (PENDING,)
+
+
+def test_dry_run_does_not_mark_delivery() -> None:
+    state = FakeState(ObservationBatch(False, 1, 1, (PENDING,)))
+    sink = FakeSink()
+
+    summary = MonitorService(FakeSource(), state, sink).run_once(
+        GROUP,
+        ScanPolicy(),
+        commit_delivery=False,
+    )
+
+    assert len(sink.sent) == 1
+    assert state.delivered == []
+    assert summary.delivered == 0
+    assert summary.pending == 1
+
+
+def oversized_pending(count: int = 50) -> tuple[PendingNotification, ...]:
+    return tuple(
+        PendingNotification(
+            event_id=f"event-{index}",
+            group_key=GROUP.key,
+            post_id=str(index),
+            url=f"https://www.facebook.com/groups/group/posts/{index}/",
+            author="Author",
+            body="x" * 4_000,
+            position=index,
+            created_at=NOW,
+            attempts=0,
+        )
+        for index in range(count)
+    )
+
+
+def test_oversized_batch_delivers_and_marks_every_chunk() -> None:
+    pending = oversized_pending()
+    state = FakeState(ObservationBatch(False, len(pending), len(pending), pending))
+    sink = FakeSink()
+
+    summary = MonitorService(FakeSource(), state, sink).run_once(
+        GROUP,
+        ScanPolicy(),
+    )
+
+    assert len(sink.sent) > 1
+    assert state.delivered == [item.event_id for item in pending]
+    assert summary.delivered == len(pending)
+    assert summary.pending == 0
+
+
+def test_later_chunk_failure_marks_only_that_chunk_and_keeps_rest_pending() -> None:
+    pending = oversized_pending()
+    chunks = render_digest_chunks(GROUP.key, pending)
+    state = FakeState(ObservationBatch(False, len(pending), len(pending), pending))
+    sink = FakeSink(DeliveryError("redacted later failure"), fail_on_call=2)
+
+    with pytest.raises(DeliveryError, match="redacted later"):
+        MonitorService(FakeSource(), state, sink).run_once(GROUP, ScanPolicy())
+
+    assert state.delivered == list(chunks[0].event_ids)
+    assert state.failed == [(list(chunks[1].event_ids), "redacted later failure")]
+    remaining = state.pending(GROUP)
+    assert [item.event_id for item in remaining] == [
+        item.event_id for item in pending if item.event_id not in chunks[0].event_ids
+    ]

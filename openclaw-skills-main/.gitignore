@@ -1,0 +1,31 @@
+# Runtime & state files
+.browser-data/
+.seen-posts.json
+screenshots/
+temp-screenshots/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+*.egg-info/
+
+# Node
+node_modules/
+
+# IDE
+.vscode/
+.idea/
+
+# ClawHub metadata (auto-generated on install, not needed in repo)
+_meta.json
+.clawhub/
+
+# Packaged skills
+*.skill

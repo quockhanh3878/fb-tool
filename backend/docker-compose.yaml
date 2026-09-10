@@ -1,0 +1,125 @@
+# ============================================================
+# CommHunter AI - 5 services: db, redis, api, worker, beat
+#
+# Chay tu THU MUC GOC repo:
+#   docker compose -f backend/docker-compose.yaml up -d --build
+# ============================================================
+name: commhunter
+
+x-app-env: &app-env
+  DATABASE_URL: postgresql+asyncpg://commhunter:${POSTGRES_PASSWORD:-commhunter}@db:5432/commhunter
+  REDIS_URL: redis://redis:6379/0
+  JWT_SECRET: ${JWT_SECRET:-doi-khoa-nay-truoc-khi-chay-that}
+  COOKIE_ENCRYPTION_KEY: ${COOKIE_ENCRYPTION_KEY:-}
+  CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
+  OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+  OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4o-mini}
+  TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+  TELEGRAM_WEBHOOK_SECRET: ${TELEGRAM_WEBHOOK_SECRET:-}
+  BROWSER_PROFILES_ROOT: /srv/backend/data/profiles
+  TZ: Asia/Ho_Chi_Minh
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: commhunter
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-commhunter}
+      POSTGRES_DB: commhunter
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U commhunter -d commhunter"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redisdata:/data
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  api:
+    build:
+      context: ..
+      dockerfile: backend/Dockerfile
+      target: api
+    restart: unless-stopped
+    environment: *app-env
+    # Migrate truoc roi moi phuc vu -> khong bao gio chay tren schema cu.
+    command: >
+      sh -c "alembic upgrade head &&
+             uvicorn app.main:app --host 0.0.0.0 --port 8000"
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8000/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  worker:
+    build:
+      context: ..
+      dockerfile: backend/Dockerfile
+      target: worker
+    restart: unless-stopped
+    environment: *app-env
+    # Profile trinh duyet phai ben vung: mat profile = Facebook coi nhu may la.
+    volumes:
+      - profiles:/srv/backend/data/profiles
+    depends_on:
+      api:
+        condition: service_started
+      redis:
+        condition: service_healthy
+    shm_size: "1gb"
+
+  beat:
+    build:
+      context: ..
+      dockerfile: backend/Dockerfile
+      target: beat
+    restart: unless-stopped
+    environment: *app-env
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  # Dashboard khong nam trong 5 service loi; bat bang:
+  #   docker compose -f backend/docker-compose.yaml --profile dashboard up -d
+  dashboard:
+    profiles: ["dashboard"]
+    build:
+      context: ../frontend
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    depends_on:
+      api:
+        condition: service_started
+
+volumes:
+  pgdata:
+  redisdata:
+  profiles:

@@ -1,0 +1,41 @@
+# ═══════════════════════════════════════════════════════════════════════════
+# CommHunter AI — Phase 1 MVP dependencies
+#
+# Cài đặt:
+#   pip install -r requirements.txt
+#   playwright install chromium          # dự phòng khi máy không có Chrome
+#
+# KHUYẾN NGHỊ: cài Google Chrome thật lên máy. browser.channel = "chrome"
+# (mặc định) chạy Chrome đã cài — khó bị Facebook phát hiện hơn Chromium
+# bundled. Không có Chrome thì tự rơi về Chromium.
+# ═══════════════════════════════════════════════════════════════════════════
+
+# ─── Browser Automation ────────────────────────────────────────────────────
+playwright>=1.61,<2
+
+# LƯU Ý QUAN TRỌNG: playwright-stealth 2.x đã ĐỔI API — bỏ hàm `stealth_async`,
+# thay bằng class `Stealth`. browser_manager._apply_stealth() hỗ trợ cả hai,
+# nhưng hãy chạy `python commhunter.py status` sau khi cài để xác nhận
+# stealth thực sự được kích hoạt. Nếu báo "KHÔNG khả dụng" thì đang chạy
+# TRẦN — tài khoản rất dễ bị Facebook phát hiện.
+playwright-stealth>=2.0.0
+
+# ─── AI ────────────────────────────────────────────────────────────────────
+openai>=1.30
+
+# ─── Telegram ──────────────────────────────────────────────────────────────
+python-telegram-bot>=21.0
+
+# ─── Config & Env ──────────────────────────────────────────────────────────
+pyyaml>=6.0
+python-dotenv>=1.0
+
+# ─── Logging ───────────────────────────────────────────────────────────────
+loguru>=0.7
+
+# ─── Storage ───────────────────────────────────────────────────────────────
+# sqlite3 là built-in của Python, không cần cài.
+
+# ─── ĐÃ LOẠI BỎ so với bản nháp trong phase1_mvp_detail.md ─────────────────
+# pydantic>=2.0   — code dùng dataclasses thuần (models.py), không dùng pydantic.
+# Pillow>=10.0    — chỉ cần khi làm feed-strip screenshot (chưa triển khai).

@@ -1,0 +1,70 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+:root {
+  color-scheme: light dark;
+}
+
+body {
+  @apply bg-slate-50 text-slate-900 antialiased selection:bg-indigo-500 selection:text-white dark:bg-slate-950 dark:text-slate-100;
+  font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+}
+
+/* Glassmorphism panel styling */
+.glass-panel {
+  @apply border border-slate-200/80 bg-white/80 backdrop-blur-md dark:border-slate-800/80 dark:bg-slate-900/80;
+}
+
+.glass-card {
+  @apply rounded-xl border border-slate-200/90 bg-white shadow-xs transition-all duration-200 hover:border-slate-300 hover:shadow-sm dark:border-slate-800 dark:bg-slate-900/90 dark:hover:border-slate-700;
+}
+
+/* Bảng dữ liệu dùng chung */
+.tbl {
+  @apply w-full text-left text-sm;
+}
+.tbl thead th {
+  @apply border-b border-slate-200/80 bg-slate-50/50 px-3.5 py-2.5 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:border-slate-800/80 dark:bg-slate-900/50 dark:text-slate-400;
+}
+.tbl tbody td {
+  @apply border-b border-slate-100 px-3.5 py-3 align-middle transition-colors dark:border-slate-800/60;
+}
+.tbl tbody tr:hover {
+  @apply bg-slate-50/80 dark:bg-slate-800/40;
+}
+
+/* Scrollbar tinh tế */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  @apply rounded-full bg-slate-300 dark:bg-slate-700;
+}
+::-webkit-scrollbar-thumb:hover {
+  @apply bg-slate-400 dark:bg-slate-600;
+}
+
+/* Shimmer animation cho skeleton */
+@keyframes shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+.skeleton-shimmer {
+  background: linear-gradient(90deg, rgba(241, 245, 249, 0) 0%, rgba(226, 232, 240, 0.6) 50%, rgba(241, 245, 249, 0) 100%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+}
+.dark .skeleton-shimmer {
+  background: linear-gradient(90deg, rgba(30, 41, 59, 0) 0%, rgba(51, 65, 85, 0.4) 50%, rgba(30, 41, 59, 0) 100%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+}

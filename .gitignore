@@ -1,0 +1,75 @@
+# ─── Python ────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+dist/
+*.egg-info/
+.eggs/
+venv/
+.venv/
+env/
+ENV/
+
+# ─── Test / Lint cache ─────────────────────────────────────────────────────
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+.tox/
+
+# ─── BÍ MẬT — TUYỆT ĐỐI KHÔNG COMMIT ───────────────────────────────────────
+# Cấu hình khách hàng chứa API key, bot token, danh sách group thật.
+# Chỉ example.yaml được phép lên repo.
+.env
+.env.*
+!.env.example
+commhunter/configs/*.yaml
+commhunter/configs/*.yml
+!commhunter/configs/example.yaml
+
+# Browser profile chứa SESSION COOKIE FACEBOOK của khách.
+# Commit nhầm = lộ tài khoản. Không bao giờ bỏ dòng này.
+commhunter/data/
+!commhunter/data/.gitkeep
+
+# Profile Chrome dùng để test tay qua CDP 9222 — CŨNG chứa cookie phiên Facebook.
+# 446 MB dữ liệu runtime, không bao giờ được commit.
+chrome-debug-profile/
+
+# Dữ liệu runtime của backend (DB SQLite, file tạm).
+backend/data/
+
+# ─── Runtime artifacts ─────────────────────────────────────────────────────
+*.db
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+*.log
+logs/
+
+# ─── OS / Editor ───────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+desktop.ini
+.idea/
+.vscode/
+*.swp
+*~
+
+# ─── Node / Next.js ────────────────────────────────────────────────────────
+node_modules/
+.next/
+out/
+*.tsbuildinfo
+.turbo/
+
+# ─── Claude Code (cục bộ, không chia sẻ) ───────────────────────────────────
+.claude/settings.local.json
+
+# Trạng thái runtime của bộ xoay mẫu comment.
+commhunter/configs/*.usage.json

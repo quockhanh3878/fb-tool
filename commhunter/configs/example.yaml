@@ -1,0 +1,182 @@
+# ═══════════════════════════════════════════════════════════════════════════
+# CommHunter AI — File cấu hình mẫu
+#
+# CÁCH DÙNG:
+#   1. cp configs/example.yaml configs/tenkhach.yaml
+#   2. Sửa các giá trị bên dưới cho đúng khách hàng
+#   3. Tạo file .env ở thư mục gốc dự án (xem phần "Biến môi trường" cuối file)
+#   4. python commhunter.py status --config configs/tenkhach.yaml
+#   5. python commhunter.py login  --config configs/tenkhach.yaml --profile scout
+#   6. python commhunter.py login  --config configs/tenkhach.yaml --profile shooter
+#   7. python commhunter.py run    --config configs/tenkhach.yaml
+#
+# ⚠️  configs/*.yaml (trừ file này) đã bị .gitignore chặn — KHÔNG commit file
+#     cấu hình thật vì nó chứa danh sách group và thông tin khách hàng.
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+# ─── 1. THÔNG TIN DỊCH VỤ ──────────────────────────────────────────────────
+# AI dùng khối này để sinh comment ứng tuyển. Viết càng cụ thể, comment càng
+# tự nhiên và ít bị nhận ra là bot.
+service:
+  name: "Tên shop / tên dịch vụ của bạn"
+  specialties: "Liệt kê chuyên môn, cách nhau bằng dấu phẩy"
+  strengths: "Điểm mạnh cạnh tranh — VD: giao demo trước, sửa free, feedback 5 sao"
+  landing_page_note: "Portfolio và feedback mình ghim ở đầu trang cá nhân"
+
+
+# ─── 2. DANH SÁCH GROUP CẦN GIÁM SÁT ───────────────────────────────────────
+# ⚠️ Bắt đầu với 2-3 group. Quét quá nhiều group ngay từ đầu là nguyên nhân
+#    checkpoint phổ biến nhất.
+groups:
+  - url: "https://www.facebook.com/groups/000000000000000"
+    name: "Tên nhóm dễ nhớ (hiện trong thông báo Telegram)"
+    scan_interval_minutes: 10
+
+  - url: "https://www.facebook.com/groups/111111111111111"
+    name: "Nhóm thứ hai"
+    scan_interval_minutes: 15
+# LƯU Ý: bản MVP hiện lấy min() của tất cả scan_interval_minutes làm chu kỳ
+# chung cho cả vòng lặp. Chu kỳ riêng từng group sẽ có ở Phase 2.
+
+
+# ─── 3. BỘ LỌC BÀI VIẾT ────────────────────────────────────────────────────
+filter:
+  # Bài PHẢI chứa ít nhất 1 từ khóa whitelist mới được đưa lên AI chấm điểm.
+  # Đây là bộ lọc rẻ tiền chạy trước, giúp tiết kiệm chi phí OpenAI.
+  # Để trống ([]) = bỏ qua bước này, mọi bài đều gọi AI (TỐN TIỀN).
+  whitelist_keywords:
+    - "tìm comm"
+    - "cần viết"
+    - "nhận viết"
+    - "tìm author"
+    - "tìm tác giả"
+    - "budget"
+    - "nhận order"
+
+  # Bài chứa BẤT KỲ từ khóa nào dưới đây bị loại ngay, không gọi AI.
+  blacklist_keywords:
+    - "đã tìm được"
+    - "đã chốt"
+    - "tuyển CTV"
+    - "nhập mã"
+    - "kiếm tiền online"
+    - "viết SEO"
+    - "dịch thuật"
+
+  # Tiêu chí cho AI chấm điểm. Mô tả bằng ngôn ngữ tự nhiên.
+  ai_filter_prompt: |
+    Chỉ lấy các bài đang TÌM NGƯỜI làm dịch vụ mà tôi cung cấp, có đề cập
+    hoặc ngầm hiểu là có ngân sách. Bỏ qua bài tuyển cộng tác viên dài hạn,
+    bài quảng cáo dịch vụ của người khác, và bài đã có người nhận.
+
+  # Ngưỡng điểm AI (0.0 - 1.0) để coi là bài phù hợp.
+  # 0.7 là điểm khởi đầu hợp lý. Thấp hơn → nhiều rác. Cao hơn → bỏ sót.
+  min_relevance_score: 0.7
+
+  # ANTI-CROWDING: bỏ qua bài đã có quá nhiều người ứng tuyển.
+  # Chen vào bài đã 20 comment vừa tốn quota vừa gần như không có khách.
+  max_competitor_comments: 8
+
+
+# ─── 4. TÀI KHOẢN FACEBOOK ─────────────────────────────────────────────────
+# Mô hình Scout–Shooter: TÁCH tài khoản đọc khỏi tài khoản ghi.
+#   scout   = chỉ quét, tần suất cao, nếu bị khóa thì thiệt hại thấp
+#   shooter = tài khoản đăng comment, mang thương hiệu, phải bảo vệ tối đa
+#
+# ⚠️ scout và shooter BẮT BUỘC dùng profile_dir khác nhau.
+# ⚠️ Nếu chạy nhiều tài khoản, mỗi tài khoản phải có proxy riêng.
+#    Nhiều clone chung 1 IP = ban hàng loạt.
+accounts:
+  scout:
+    cookie_file: "data/browser_profiles/scout/cookies.json"
+    profile_dir: "data/browser_profiles/scout"
+    proxy: null      # hoặc "socks5://user:pass@ip:port" / "http://ip:port"
+    # cdp_endpoint: "http://localhost:9222"   # ATTACH vào Chrome đang chạy sẵn
+
+  shooter:
+    cookie_file: "data/browser_profiles/shooter/cookies.json"
+    profile_dir: "data/browser_profiles/shooter"
+    proxy: null
+    # cdp_endpoint: "http://localhost:9222"
+
+
+# ─── 4b. TRÌNH DUYỆT ───────────────────────────────────────────────────────
+# channel  : "chrome" = dùng Google Chrome THẬT đã cài (khó bị phát hiện hơn
+#            Chromium bundled). Rơi về "chromium" nếu máy không có Chrome.
+# headless : false = HIỆN browser. Nuôi nick bằng browser thật + thao tác UI
+#            như người an toàn hơn nhiều headless. Chỉ bật true khi buộc chạy
+#            trên server không màn hình (kèm xvfb).
+# attach_cdp: CDP endpoint mặc định cho MỌI nick — dùng để test tay trên nick
+#            thật đang mở trong Chrome. account.cdp_endpoint ghi đè giá trị này.
+#            Mở Chrome kèm cờ:  chrome.exe --remote-debugging-port=9222
+#            Khi attach: KHÔNG spoof vân tay, KHÔNG áp proxy, KHÔNG tự đóng
+#            browser của bạn lúc dọn dẹp.
+browser:
+  channel: "chrome"
+  headless: false
+  attach_cdp: null
+
+
+# ─── 5. CẤU HÌNH COMMENT ───────────────────────────────────────────────────
+comment:
+  # "semi_auto" — AI lọc xong bắn thông báo Telegram, BẠN bấm nút mới comment.
+  #               → Khuyến nghị mạnh cho 2 tuần đầu.
+  # "full_auto"  — Tự động comment không cần duyệt. Chỉ bật khi đã tin bộ lọc.
+  mode: "semi_auto"
+
+  ai_model: "gpt-4o-mini"
+
+  # Số LƯỢT thao tác/ngày, kể cả thất bại. KHÔNG nên vượt 20 với tài khoản mới.
+  # Hệ thống đếm mọi lượt gửi (thành công, thất bại, shadowban) vào quota này
+  # để tránh việc bot liên tục cày vào tài khoản đang bị Facebook soi/chặn.
+  # Tài khoản dưới 3 tháng tuổi nên để 5-10.
+  max_comments_per_day: 20
+
+  # Khoảng nghỉ ngẫu nhiên trước mỗi comment (giây).
+  # Dưới 300s là tín hiệu bot rất rõ. config_loader sẽ cảnh báo.
+  delay_min_seconds: 300
+  delay_max_seconds: 900
+
+  # Mô phỏng tốc độ gõ người thật (mili giây / ký tự).
+  typing_delay_min_ms: 80
+  typing_delay_max_ms: 350
+
+  # Xác suất gõ sai rồi xóa sửa, mô phỏng người thật.
+  typo_probability: 0.05
+
+
+# ─── 6. TELEGRAM ───────────────────────────────────────────────────────────
+# Lấy bot_token từ @BotFather. Lấy chat_id bằng cách nhắn cho bot rồi mở:
+#   https://api.telegram.org/bot<TOKEN>/getUpdates
+telegram:
+  bot_token: "$TELEGRAM_BOT_TOKEN"
+  chat_id: "$TELEGRAM_CHAT_ID"
+
+
+# ─── 7. OPENAI ─────────────────────────────────────────────────────────────
+openai:
+  api_key: "$OPENAI_API_KEY"
+  model: "gpt-4o-mini"
+
+
+# ─── 8. DATABASE ───────────────────────────────────────────────────────────
+# Đường dẫn tương đối tính từ thư mục commhunter/.
+database:
+  path: "data/commhunter.db"
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# BIẾN MÔI TRƯỜNG
+#
+# Giá trị dạng "$TEN_BIEN" hoặc "${TEN_BIEN}" sẽ được thay bằng biến môi
+# trường tương ứng. commhunter.py tự động nạp file .env ở thư mục gốc.
+#
+# File .env mẫu:
+#   OPENAI_API_KEY=sk-...
+#   TELEGRAM_BOT_TOKEN=123456789:AA...
+#   TELEGRAM_CHAT_ID=987654321
+#
+# Nếu biến không tồn tại, giá trị giữ nguyên chuỗi literal và lệnh `status`
+# sẽ báo lỗi — hãy chạy `status` trước khi chạy `run`.
+# ═══════════════════════════════════════════════════════════════════════════
