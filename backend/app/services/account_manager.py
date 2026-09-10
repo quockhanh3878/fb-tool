@@ -148,7 +148,7 @@ class AccountManager:
             )
             await self._notify(
                 clone,
-                f"⚠️ Clone '{clone.display_name}' bị checkpoint! Cần xác minh thủ công.",
+                f"Clone '{clone.display_name}' bị checkpoint! Cần xác minh thủ công.",
             )
             await self.try_switch_to_backup(clone)
         elif to_state is AccountState.BANNED:
@@ -158,13 +158,13 @@ class AccountManager:
             if switched:
                 await self._notify(
                     clone,
-                    f"🚫 Clone '{clone.display_name}' bị ban. Đã chuyển sang "
+                    f"Clone '{clone.display_name}' bị ban. Đã chuyển sang "
                     f"clone dự phòng '{switched.display_name}'.",
                 )
             else:
                 await self._notify(
                     clone,
-                    f"🚫 Clone '{clone.display_name}' bị ban và KHÔNG còn clone dự phòng. "
+                    f"Clone '{clone.display_name}' bị ban và KHÔNG còn clone dự phòng. "
                     "Vui lòng thêm clone mới.",
                 )
         elif to_state is AccountState.COOLDOWN and event is AccountTransition.RATE_LIMITED:
@@ -241,7 +241,7 @@ class AccountManager:
         if clone.consecutive_failures >= SHADOWBAN_ALERT_THRESHOLD:
             await self._notify(
                 clone,
-                f"⚠️ Clone '{clone.display_name}' hỏng {clone.consecutive_failures} lượt "
+                f"Clone '{clone.display_name}' hỏng {clone.consecutive_failures} lượt "
                 "liên tiếp — nghi bị hạn chế. Hãy kiểm tra tài khoản.",
             )
         await self.db.flush()

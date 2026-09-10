@@ -1,4 +1,4 @@
-# 📂 PHÂN TÍCH CẤU TRÚC 3 HỆ THỐNG MÃ NGUỒN HIỆN CÓ
+# PHÂN TÍCH CẤU TRÚC 3 HỆ THỐNG MÃ NGUỒN HIỆN CÓ
 
 Tài liệu này phân tích chi tiết cấu trúc, công nghệ, ưu/nhược điểm và khả năng tái sử dụng của 3 thư mục mã nguồn có sẵn trong dự án:
 1. `ai-comment-bot-main` (Bot Selenium tự động bình luận mô phỏng người thật + OpenAI)

@@ -10,7 +10,7 @@
 #   6. python commhunter.py login  --config configs/tenkhach.yaml --profile shooter
 #   7. python commhunter.py run    --config configs/tenkhach.yaml
 #
-# ⚠️  configs/*.yaml (trừ file này) đã bị .gitignore chặn — KHÔNG commit file
+# LƯU Ý: configs/*.yaml (trừ file này) đã bị .gitignore chặn — KHÔNG commit file
 #     cấu hình thật vì nó chứa danh sách group và thông tin khách hàng.
 # ═══════════════════════════════════════════════════════════════════════════
 
@@ -26,7 +26,7 @@ service:
 
 
 # ─── 2. DANH SÁCH GROUP CẦN GIÁM SÁT ───────────────────────────────────────
-# ⚠️ Bắt đầu với 2-3 group. Quét quá nhiều group ngay từ đầu là nguyên nhân
+# LƯU Ý: Bắt đầu với 2-3 group. Quét quá nhiều group ngay từ đầu là nguyên nhân
 #    checkpoint phổ biến nhất.
 groups:
   - url: "https://www.facebook.com/groups/000000000000000"
@@ -84,8 +84,8 @@ filter:
 #   scout   = chỉ quét, tần suất cao, nếu bị khóa thì thiệt hại thấp
 #   shooter = tài khoản đăng comment, mang thương hiệu, phải bảo vệ tối đa
 #
-# ⚠️ scout và shooter BẮT BUỘC dùng profile_dir khác nhau.
-# ⚠️ Nếu chạy nhiều tài khoản, mỗi tài khoản phải có proxy riêng.
+# LƯU Ý: scout và shooter BẮT BUỘC dùng profile_dir khác nhau.
+# LƯU Ý: Nếu chạy nhiều tài khoản, mỗi tài khoản phải có proxy riêng.
 #    Nhiều clone chung 1 IP = ban hàng loạt.
 accounts:
   scout:

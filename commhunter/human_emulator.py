@@ -199,7 +199,7 @@ async def warmup_session(page, duration_min: float = 30, duration_max: float = 6
     Chỉ cuộn và hover có kiểm soát, KHÔNG click vào bất kỳ đâu.
     """
     duration = random.uniform(duration_min, duration_max)
-    logger.info(f"🔥 Warmup: Lướt newsfeed trong {duration:.0f}s")
+    logger.info(f"Warmup: Lướt newsfeed trong {duration:.0f}s")
 
     await page.goto("https://www.facebook.com/", wait_until="domcontentloaded")
     await random_pause(2, 4)
@@ -215,5 +215,5 @@ async def warmup_session(page, duration_min: float = 30, duration_max: float = 6
         else:
             await random_pause(2, 5)
 
-    logger.info("✅ Warmup hoàn tất")
+    logger.info("Warmup hoàn tất")
 

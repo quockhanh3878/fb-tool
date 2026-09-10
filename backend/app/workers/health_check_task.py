@@ -78,7 +78,7 @@ async def _check_all() -> dict:
                 )
                 await notify(
                     clone.user_id,
-                    f"⏳ Cookie của clone '{clone.display_name}' còn {days:g} ngày là hết hạn. "
+                    f"Cookie của clone '{clone.display_name}' còn {days:g} ngày là hết hạn. "
                     "Hãy xuất cookie mới trước khi clone bị đá về trang đăng nhập.",
                 )
             else:

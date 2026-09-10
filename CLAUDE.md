@@ -91,7 +91,7 @@ Ngoại lệ được bỏ qua hoàn toàn: sửa hiển nhiên 1–3 dòng · a
 1. Trước khi tạo module / route / worker mới: xác định nó thuộc task nào trong `docs/plans/phaseN_*.md`. Không có task tương ứng → viết vào plan một mục ngắn trước, rồi mới code.
 2. File mới mang comment dòng đầu trỏ về plan: `# plan: docs/plans/phase2_dashboard_detail.md` (Python) hoặc `// plan: ...` (TS). Migration Alembic: `# plan: ...` ngay dưới docstring.
 3. **Sau khi hiện thực**: cập nhật `docs/plans/DELIVERY_STATUS.md` trong **cùng một diff** — bảng trạng thái, số assertion test, và mục "còn chặn bởi gì".
-4. **Quy tắc vàng của `DELIVERY_STATUS.md`: chỉ đánh ✅ khi có mã chạy được VÀ có test chứng minh.** Có tài liệu mô tả không tính là xong. Không được sửa trạng thái thành ✅ để bảng đẹp hơn.
+4. **Quy tắc vàng của `DELIVERY_STATUS.md`: chỉ đánh khi có mã chạy được VÀ có test chứng minh.** Có tài liệu mô tả không tính là xong. Không được sửa trạng thái thành để bảng đẹp hơn.
 5. Đổi hành vi mà `README.md` mô tả (lệnh CLI, cổng, biến môi trường, số test) → sửa `README.md` cùng diff. README lệch thực tế bị coi là bug.
 
 ---

@@ -110,7 +110,7 @@ class ScoutWorker:
 
         try:
             # Bước 1: Navigate đến group
-            logger.info(f"📡 Scout: Đang quét group {group_url}")
+            logger.info(f"Scout: Đang quét group {group_url}")
             await page.goto(group_url, wait_until="domcontentloaded")
             await page.wait_for_timeout(
                 random.randint(PAGE_LOAD_WAIT_MIN_MS, PAGE_LOAD_WAIT_MAX_MS)
@@ -168,7 +168,7 @@ class ScoutWorker:
                 except Exception as e:
                     logger.debug(f"Bỏ qua element lỗi: {e}")
 
-            logger.info(f"✅ Quét được {len(posts)} bài viết từ {group_url}")
+            logger.info(f"Quét được {len(posts)} bài viết từ {group_url}")
 
         except CheckpointError:
             raise
@@ -215,7 +215,7 @@ class ScoutWorker:
             dedup_store: DedupStore instance.
             callback: Async callable nhận danh sách bài viết mới.
         """
-        logger.info("🔄 Scout loop khởi động")
+        logger.info("Scout loop khởi động")
 
         while True:
             for group in self.config.groups:
@@ -230,7 +230,7 @@ class ScoutWorker:
                     await asyncio.sleep(random.uniform(SCAN_DELAY_MIN_SEC, SCAN_DELAY_MAX_SEC))
 
                 except CheckpointError as e:
-                    logger.error(f"🚨 {e}")
+                    logger.error(f"{e}")
                     logger.error("Scout loop tạm dừng 30 phút do checkpoint")
                     await asyncio.sleep(30 * 60)
                     break  # Thoát vòng for, quay lại while
@@ -245,5 +245,5 @@ class ScoutWorker:
                 default=10,
             )
             wait_time = min_interval * 60
-            logger.info(f"💤 Đợi {min_interval} phút đến chu kỳ quét tiếp...")
+            logger.info(f"Đợi {min_interval} phút đến chu kỳ quét tiếp...")
             await asyncio.sleep(wait_time)

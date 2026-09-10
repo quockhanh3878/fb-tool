@@ -1,4 +1,4 @@
-# 📋 PHASE 1 — MVP SCRIPT: Chi tiết Triển khai (Tuần 1-2)
+# PHASE 1 — MVP SCRIPT: Chi tiết Triển khai (Tuần 1-2)
 
 > **Mục tiêu:** Bàn giao công cụ CLI chạy được cho khách Nyatymita trong 2 tuần. Khách chỉ cần chạy 1 lệnh duy nhất: `python commhunter.py --config nyatymita.yaml`, hệ thống tự quét group, lọc bài, sinh comment AI và bắn thông báo Telegram.
 > **Tham chiếu:** [Master Plan §4](file:///f:/Clone/fb-tool/docs/03_MASTER_PLAN.md) | [Phân tích mã nguồn](file:///f:/Clone/fb-tool/docs/01_EXISTING_SYSTEMS_ANALYSIS.md)

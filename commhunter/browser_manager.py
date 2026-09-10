@@ -168,7 +168,7 @@ class BrowserManager:
         spoof fingerprint (đây là browser thật), KHÔNG áp proxy.
         """
         p = await self._get_playwright()
-        logger.info(f"🔌 Attach vào Chrome qua CDP: {cdp_endpoint}")
+        logger.info(f"Attach vào Chrome qua CDP: {cdp_endpoint}")
         browser = await p.chromium.connect_over_cdp(cdp_endpoint)
 
         if browser.contexts:
@@ -180,7 +180,7 @@ class BrowserManager:
         # nó trông lạ hơn. Dùng nguyên trạng.
         self._contexts[key] = {"context": context, "attached": True, "browser": browser}
         logger.info(
-            f"✅ Đã attach — {len(context.pages)} tab đang mở. "
+            f"Đã attach — {len(context.pages)} tab đang mở. "
             "Sẽ KHÔNG đóng browser này khi dọn dẹp."
         )
         return context
@@ -238,7 +238,7 @@ class BrowserManager:
         applied = await apply_stealth(context, fingerprint=fp)
         if not applied:
             logger.warning(
-                "⚠️ KHÔNG áp dụng được playwright-stealth — chạy `commhunter.py status`."
+                "KHÔNG áp dụng được playwright-stealth — chạy `commhunter.py status`."
             )
 
         # 2) Init script vân tay CHẠY SAU stealth → thắng ở hardwareConcurrency /
@@ -326,7 +326,7 @@ class BrowserManager:
         page = context.pages[0] if context.pages else await context.new_page()
         await page.goto("https://www.facebook.com/", wait_until="domcontentloaded")
 
-        logger.info("🔑 Browser đã mở. Vui lòng đăng nhập Facebook thủ công...")
+        logger.info("Browser đã mở. Vui lòng đăng nhập Facebook thủ công...")
         logger.info("   Sau khi đăng nhập xong, nhấn Enter tại terminal này để lưu session.")
 
         await asyncio.get_running_loop().run_in_executor(
@@ -335,9 +335,9 @@ class BrowserManager:
 
         is_logged = await self.check_session(profile_dir)
         if is_logged:
-            logger.info("✅ Đăng nhập thành công! Session đã được lưu.")
+            logger.info("Đăng nhập thành công! Session đã được lưu.")
         else:
-            logger.warning("⚠️ Có vẻ chưa đăng nhập thành công. Kiểm tra lại.")
+            logger.warning("Có vẻ chưa đăng nhập thành công. Kiểm tra lại.")
 
         await self._close_one(profile_dir)
         return is_logged
@@ -375,7 +375,7 @@ class BrowserManager:
                 logger.warning("Session hết hạn — cần đăng nhập lại")
                 return False
 
-            logger.info("✅ Session hợp lệ")
+            logger.info("Session hợp lệ")
             return True
 
         except Exception as e:

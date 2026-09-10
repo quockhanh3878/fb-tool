@@ -178,7 +178,7 @@ class ShooterWorker:
             max_daily = self.config.comment.max_comments_per_day
             if today_count >= max_daily:
                 logger.warning(
-                    f"⛔ Rate limit: Đã thực hiện {today_count}/{max_daily} lượt hôm nay. Dừng lại."
+                    f"Rate limit: Đã thực hiện {today_count}/{max_daily} lượt hôm nay. Dừng lại."
                 )
                 return CommentStatus.FAILED
 
@@ -188,7 +188,7 @@ class ShooterWorker:
             attempt_id = dedup_store.record_attempt(post_hash, comment_text)
 
         # 3. Warmup: Lướt newsfeed
-        logger.info("🔥 Warmup trước khi comment...")
+        logger.info("Warmup trước khi comment...")
         await warmup_session(
             page,
             duration_min=WARMUP_DURATION_MIN_SEC,
@@ -197,13 +197,13 @@ class ShooterWorker:
 
         try:
             # 4. Navigate đến bài viết
-            logger.info(f"📝 Navigate đến bài viết: {post_url}")
+            logger.info(f"Navigate đến bài viết: {post_url}")
             await page.goto(post_url, wait_until="domcontentloaded")
             await page.wait_for_timeout(random.randint(2000, 4000))
 
             # Kiểm tra checkpoint
             if await BrowserManager.detect_checkpoint_page(page):
-                logger.error("🚨 Phát hiện checkpoint khi mở bài viết")
+                logger.error("Phát hiện checkpoint khi mở bài viết")
                 if dedup_store and attempt_id is not None:
                     dedup_store.finish_attempt(attempt_id, CommentStatus.FAILED, "checkpoint")
                 return CommentStatus.FAILED
@@ -235,7 +235,7 @@ class ShooterWorker:
                     continue
 
             if not comment_box:
-                logger.error("❌ Không tìm thấy ô comment")
+                logger.error("Không tìm thấy ô comment")
                 if dedup_store and attempt_id is not None:
                     dedup_store.finish_attempt(attempt_id, CommentStatus.FAILED, "comment_box_not_found")
                 return CommentStatus.FAILED
@@ -265,7 +265,7 @@ class ShooterWorker:
 
             # 10. Gửi comment (Enter)
             await page.keyboard.press("Enter")
-            logger.info("📤 Đã nhấn Enter gửi comment")
+            logger.info("Đã nhấn Enter gửi comment")
 
             # 11. Đợi và verify 2 chiều
             await page.wait_for_timeout(random.randint(2000, 4000))
@@ -273,7 +273,7 @@ class ShooterWorker:
             status = await self._verify_comment(page, comment_box, comment_text)
 
             if status == CommentStatus.SUCCESS:
-                logger.info("✅ Comment thành công!")
+                logger.info("Comment thành công!")
                 if delete_after:
                     await random_pause(2, 4)
                     await self.delete_comment(page, comment_text)
@@ -281,18 +281,18 @@ class ShooterWorker:
                     dedup_store.finish_attempt(attempt_id, CommentStatus.SUCCESS)
                     dedup_store.increment_comments_sent()
             elif status == CommentStatus.SHADOWBANNED:
-                logger.warning("⚠️ Nghi ngờ bị shadowban — comment không hiển thị")
+                logger.warning("Nghi ngờ bị shadowban — comment không hiển thị")
                 if dedup_store and attempt_id is not None:
                     dedup_store.finish_attempt(attempt_id, CommentStatus.SHADOWBANNED, "shadowbanned")
             else:
-                logger.warning("⚠️ Không thể xác nhận comment hoặc enter không gửi được")
+                logger.warning("Không thể xác nhận comment hoặc enter không gửi được")
                 if dedup_store and attempt_id is not None:
                     dedup_store.finish_attempt(attempt_id, CommentStatus.FAILED, "verify_failed")
 
             return status
 
         except Exception as e:
-            logger.error(f"❌ Lỗi comment: {e}")
+            logger.error(f"Lỗi comment: {e}")
             if dedup_store and attempt_id is not None:
                 dedup_store.finish_attempt(attempt_id, CommentStatus.FAILED, str(e))
             return CommentStatus.FAILED
@@ -302,16 +302,16 @@ class ShooterWorker:
         
         | Ô nhập đã trống? | Text xuất hiện NGOÀI ô nhập? | Kết luận |
         |---|---|---|
-        | ✅ trống | ✅ có | SUCCESS |
-        | ✅ trống | ❌ không (sau 1 lần chờ lại) | SHADOWBANNED |
-        | ❌ còn text | — | FAILED (enter_did_not_submit) |
+        | trống | có | SUCCESS |
+        | trống | không (sau 1 lần chờ lại) | SHADOWBANNED |
+        | còn text | — | FAILED (enter_did_not_submit) |
         | lỗi khi kiểm tra | — | FAILED (verify_error) |
         """
         try:
             # 1. Kiểm tra ô nhập
             is_empty = await _composer_is_empty(comment_box)
             if not is_empty:
-                logger.warning("❌ Ô nhập comment vẫn còn text sau Enter (enter_did_not_submit)")
+                logger.warning("Ô nhập comment vẫn còn text sau Enter (enter_did_not_submit)")
                 return CommentStatus.FAILED
 
             phrase = _pick_verify_phrase(comment_text)
@@ -327,7 +327,7 @@ class ShooterWorker:
             if found:
                 return CommentStatus.SUCCESS
 
-            logger.warning("⚠️ Text không hiển thị ngoài ô nhập sau khi gửi (nghi ngờ shadowban)")
+            logger.warning("Text không hiển thị ngoài ô nhập sau khi gửi (nghi ngờ shadowban)")
             return CommentStatus.SHADOWBANNED
 
         except Exception as e:
@@ -402,7 +402,7 @@ class ShooterWorker:
 
             still = await page.get_by_text(key, exact=False).count()
             if still == 0:
-                logger.info("🗑️  Đã xoá comment")
+                logger.info(" Đã xoá comment")
                 return True
             logger.warning(f"Comment có thể chưa xoá (còn {still} node) — kiểm tra lại")
             return False
@@ -424,7 +424,7 @@ class ShooterWorker:
             self.config.comment.delay_min_seconds,
             self.config.comment.delay_max_seconds,
         )
-        logger.info(f"⏰ Đặt lịch comment sau {delay:.0f}s cho bài: {post.post_url}")
+        logger.info(f"Đặt lịch comment sau {delay:.0f}s cho bài: {post.post_url}")
 
         await asyncio.sleep(delay)
 

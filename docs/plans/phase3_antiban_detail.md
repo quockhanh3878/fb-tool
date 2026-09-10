@@ -1,4 +1,4 @@
-# 📋 PHASE 3 — ANTI-BAN ENGINE & ACCOUNT MANAGER: Chi tiết Triển khai (Tuần 7-10)
+# PHASE 3 — ANTI-BAN ENGINE & ACCOUNT MANAGER: Chi tiết Triển khai (Tuần 7-10)
 
 > **Mục tiêu:** Hardening hệ thống để chạy bền bỉ 24/7, tự động phát hiện và xử lý mọi sự cố tài khoản clone (checkpoint, shadowban, rate limit), tự ủ ấm clone mới, tự xoay vòng proxy và tự phục hồi khi gặp lỗi — không cần can thiệp thủ công.
 > **Tiền đề:** Phase 2 Web Dashboard đã hoạt động ổn định với nhiều khách hàng.
@@ -133,11 +133,11 @@ class AccountManager:
             await self.schedule_cooldown_wakeup(clone_id, hours=cooldown_hours)
         elif new_state == AccountState.CHECKPOINT:
             await self.pause_all_tasks_for_clone(clone_id)
-            await self.notify_user(clone_id, "⚠️ Clone bị checkpoint! Cần xác minh.")
+            await self.notify_user(clone_id, "Clone bị checkpoint! Cần xác minh.")
         elif new_state == AccountState.BANNED:
             await self.deactivate_clone(clone_id)
             await self.try_switch_to_backup(clone_id)
-            await self.notify_user(clone_id, "🚫 Clone bị ban. Đã chuyển sang clone dự phòng.")
+            await self.notify_user(clone_id, "Clone bị ban. Đã chuyển sang clone dự phòng.")
 
     async def try_switch_to_backup(self, failed_clone_id: str):
         """Tự động chuyển sang clone dự phòng cùng vai trò."""
@@ -150,10 +150,10 @@ class AccountManager:
         if backup:
             await self.assign_campaigns_to_clone(backup.id, failed_clone.campaigns)
             await self.notify_user(failed_clone.user_id,
-                f"✅ Đã chuyển sang clone '{backup.display_name}' tự động.")
+                f"Đã chuyển sang clone '{backup.display_name}' tự động.")
         else:
             await self.notify_user(failed_clone.user_id,
-                "⚠️ Không còn clone dự phòng! Vui lòng thêm clone mới.")
+                "Không còn clone dự phòng! Vui lòng thêm clone mới.")
 ```
 
 **Bảng bổ sung Database:**
@@ -328,7 +328,7 @@ class ShadowbanDetector:
 2. Tăng `clone.consecutive_failures += 1`
 3. Nếu `consecutive_failures >= 3`: Chuyển clone sang Cooldown 24h
 4. Nếu `consecutive_failures >= 5`: Đánh dấu clone nghi ngờ, cảnh báo user
-5. Bắn thông báo: "⚠️ Comment trên bài [link] bị ẩn (shadowban). Clone đang tạm nghỉ."
+5. Bắn thông báo: "Comment trên bài [link] bị ẩn (shadowban). Clone đang tạm nghỉ."
 
 **Acceptance Criteria:**
 - [ ] Phát hiện chính xác shadowban (test với comment thật)

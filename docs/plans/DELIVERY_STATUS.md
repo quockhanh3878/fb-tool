@@ -1,16 +1,16 @@
-# 📊 TÌNH TRẠNG BÀN GIAO — Đối chiếu Plan ↔ Mã nguồn thực tế
+# TÌNH TRẠNG BÀN GIAO — Đối chiếu Plan ↔ Mã nguồn thực tế
 
 > Cập nhật: 08/09/2026. Tài liệu này đối chiếu **từng task trong 4 plan** với mã nguồn
 > đã thực sự tồn tại trong repo, và nói rõ **cái gì chưa làm được và vì sao**.
 >
-> Nguyên tắc: chỉ đánh ✅ khi có mã nguồn chạy được **và** có test chứng minh.
+> Nguyên tắc: chỉ đánh khi có mã nguồn chạy được **và** có test chứng minh.
 > Việc chỉ có tài liệu mô tả không được tính là hoàn thành.
 
 ---
 
 ## 1. Bảng điểm tổng
 
-| Phase | Task theo plan | ✅ Đã có mã + test | ⏳ Chặn bởi yếu tố ngoài | Ghi chú |
+| Phase | Task theo plan | Đã có mã + test | Chặn bởi yếu tố ngoài | Ghi chú |
 |---|---|---|---|---|
 | **Phase 1 — MVP Script** | 11 | 10 | 1 (Sprint 3: chạy thật) | 104/104 assertion PASS |
 | **Phase 2 — Dashboard** | 17 | 16 | 1 (deploy VPS + SSL) | 165/165 assertion PASS |
@@ -35,17 +35,17 @@ alembic upgrade head / downgrade    →    11 bảng + 0002 (xoay vòng), lên x
 
 | Task | Trạng thái | Nơi hiện thực |
 |---|---|---|
-| Config YAML + Data Models | ✅ | `commhunter/config_loader.py`, `models.py` |
-| Browser Manager (Playwright Stealth) | ✅ | `commhunter/browser_manager.py` |
-| Scout Worker | ✅ | `commhunter/scout_worker.py` |
-| Dedup Store (SQLite) | ✅ | `commhunter/dedup_store.py` |
-| AI Engine (lọc + sinh comment) | ✅ | `commhunter/ai_engine.py` |
-| Human Emulator | ✅ | `commhunter/human_emulator.py` |
-| Shooter Worker | ✅ | `commhunter/shooter_worker.py` |
-| Telegram Bot bán tự động | ✅ | `commhunter/telegram_bot.py` |
-| CLI Entry Point | ✅ | `commhunter/commhunter.py` |
-| Integration Test offline | ✅ | `commhunter/tests/test_pipeline.py` |
-| **Sprint 3 — Kiểm thử Facebook thật** | ⏳ **Chặn** | Cần tài khoản clone thật, cookie thật, và theo dõi nhiều ngày. Không thể mô phỏng offline. |
+| Config YAML + Data Models | Xong | `commhunter/config_loader.py`, `models.py` |
+| Browser Manager (Playwright Stealth) | Xong | `commhunter/browser_manager.py` |
+| Scout Worker | Xong | `commhunter/scout_worker.py` |
+| Dedup Store (SQLite) | Xong | `commhunter/dedup_store.py` |
+| AI Engine (lọc + sinh comment) | Xong | `commhunter/ai_engine.py` |
+| Human Emulator | Xong | `commhunter/human_emulator.py` |
+| Shooter Worker | Xong | `commhunter/shooter_worker.py` |
+| Telegram Bot bán tự động | Xong | `commhunter/telegram_bot.py` |
+| CLI Entry Point | Xong | `commhunter/commhunter.py` |
+| Integration Test offline | Xong | `commhunter/tests/test_pipeline.py` |
+| **Sprint 3 — Kiểm thử Facebook thật** | **Chặn** | Cần tài khoản clone thật, cookie thật, và theo dõi nhiều ngày. Không thể mô phỏng offline. |
 
 **Nợ kỹ thuật đã trả trong đợt này:** `AIEngine.__init__` trước đây chỉ nhận chuỗi `api_key`,
 nhưng test lại truyền cả `AppConfig`. SDK `openai` không kiểm kiểu nên lỗi bị giấu tới lúc gọi API
@@ -59,11 +59,11 @@ thật. Hợp đồng nay nhận **cả hai** dạng và báo `TypeError` rõ r�
 
 | Task | Trạng thái | Nơi hiện thực |
 |---|---|---|
-| Docker Compose stack | ✅ | `backend/docker-compose.yaml` — đúng 5 service, có healthcheck cho db/redis/api |
-| Migration PostgreSQL | ✅ | `backend/alembic/versions/0001_khoi_tao_11_bang.py` — 11 bảng |
-| Auth API (JWT) | ✅ | `backend/app/routers/auth.py` + `security.py` — access 15 phút, refresh 7 ngày |
-| Campaign CRUD API | ✅ | `backend/app/routers/campaigns.py` |
-| Clone Management API | ✅ | `backend/app/routers/clones.py` — cookie mã hóa Fernet |
+| Docker Compose stack | Xong | `backend/docker-compose.yaml` — đúng 5 service, có healthcheck cho db/redis/api |
+| Migration PostgreSQL | Xong | `backend/alembic/versions/0001_khoi_tao_11_bang.py` — 11 bảng |
+| Auth API (JWT) | Xong | `backend/app/routers/auth.py` + `security.py` — access 15 phút, refresh 7 ngày |
+| Campaign CRUD API | Xong | `backend/app/routers/campaigns.py` |
+| Clone Management API | Xong | `backend/app/routers/clones.py` — cookie mã hóa Fernet |
 
 Tiêu chí nghiệm thu của plan đều đạt: `docker compose config` liệt kê đủ 5 service,
 `alembic upgrade head` tạo đủ bảng, `GET /health` trả `{"status":"ok"}`.
@@ -72,26 +72,26 @@ Tiêu chí nghiệm thu của plan đều đạt: `docker compose config` liệt
 
 | Màn hình theo plan | Trạng thái | Route |
 |---|---|---|
-| Next.js Setup | ✅ | Next 16 + React 19 + Tailwind 4, TypeScript strict |
-| Dashboard Overview | ✅ | `/dashboard` |
-| Campaign Manager | ✅ | `/campaigns` |
-| Group Manager | ✅ | `/campaigns/[id]` → tab Group |
-| Script Studio | ✅ | `/campaigns/[id]` → tab Kịch bản — soạn thảo spintax có kiểm lỗi tức thì, xem trước, duyệt biến thể (xem §4b) |
-| Clone Manager | ✅ | `/clones` (nạp cookie, ủ ấm, chuyển trạng thái tay) |
-| Post Feed | ✅ | `/posts` (duyệt lead + hàng đợi comment) |
-| Bump Scheduler | ✅ | `/campaigns/[id]` → tab Bump |
-| Stats & Reports | ✅ | `/stats` |
-| *(bổ sung)* Health Monitor | ✅ | `/health` |
-| *(bổ sung)* Gói cước | ✅ | `/billing` |
-| *(bổ sung)* Cài đặt | ✅ | `/settings` |
+| Next.js Setup | Xong | Next 16 + React 19 + Tailwind 4, TypeScript strict |
+| Dashboard Overview | Xong | `/dashboard` |
+| Campaign Manager | Xong | `/campaigns` |
+| Group Manager | Xong | `/campaigns/[id]` → tab Group |
+| Script Studio | Xong | `/campaigns/[id]` → tab Kịch bản — soạn thảo spintax có kiểm lỗi tức thì, xem trước, duyệt biến thể (xem §4b) |
+| Clone Manager | Xong | `/clones` (nạp cookie, ủ ấm, chuyển trạng thái tay) |
+| Post Feed | Xong | `/posts` (duyệt lead + hàng đợi comment) |
+| Bump Scheduler | Xong | `/campaigns/[id]` → tab Bump |
+| Stats & Reports | Xong | `/stats` |
+| *(bổ sung)* Health Monitor | Xong | `/health` |
+| *(bổ sung)* Gói cước | Xong | `/billing` |
+| *(bổ sung)* Cài đặt | Xong | `/settings` |
 
 ### Sprint 5 — Tích hợp & Deploy
 
 | Task | Trạng thái | Ghi chú |
 |---|---|---|
-| Telegram Webhook | ✅ | `backend/app/routers/telegram_webhook.py` — liên kết `/start <mã>`, nút duyệt/bỏ qua, kiểm tra secret token |
-| E2E Testing | ✅ | `backend/tests/test_api.py` — 16 nhóm, bao gồm cách ly đa khách và luồng ingest → duyệt → hàng đợi |
-| **Production Deploy (VPS + SSL)** | ⏳ **Chặn** | Cần máy chủ, tên miền và chứng chỉ thật. Dockerfile + compose đã sẵn sàng để `up` trên VPS bất kỳ. |
+| Telegram Webhook | Xong | `backend/app/routers/telegram_webhook.py` — liên kết `/start <mã>`, nút duyệt/bỏ qua, kiểm tra secret token |
+| E2E Testing | Xong | `backend/tests/test_api.py` — 16 nhóm, bao gồm cách ly đa khách và luồng ingest → duyệt → hàng đợi |
+| **Production Deploy (VPS + SSL)** | **Chặn** | Cần máy chủ, tên miền và chứng chỉ thật. Dockerfile + compose đã sẵn sàng để `up` trên VPS bất kỳ. |
 
 ---
 
@@ -99,19 +99,19 @@ Tiêu chí nghiệm thu của plan đều đạt: `docker compose config` liệt
 
 | Task | Trạng thái | Nơi hiện thực |
 |---|---|---|
-| Account State Machine (7 trạng thái) | ✅ | `backend/app/services/account_manager.py` — 13 cặp chuyển hợp lệ; chuyển sai ném `InvalidTransitionError` |
-| Warm-up Pipeline 7 ngày | ✅ | `backend/app/services/warmup_service.py` + `workers/warmup_task.py` |
-| Checkpoint Detection 3 lớp | ✅ | `backend/app/services/anti_ban.py` — URL, tiêu đề (Việt + Anh), DOM |
-| Shadowban Detection | ✅ | `anti_ban.ShadowbanDetector` — đối chiếu comment có thật sự hiện trên trang |
-| Proxy Manager | ✅ | `backend/app/services/proxy_manager.py` + `/api/health/proxies/*` |
-| Adaptive Rate Limiter | ✅ | `anti_ban.compute_delay` — tỉ lệ thành công ≥0.95 giãn ×0.8, <0.50 kịch trần; luôn kẹp trong [180, 1800] giây |
-| Health Monitor Dashboard | ✅ | `/health` + `backend/app/routers/health.py` |
+| Account State Machine (7 trạng thái) | Xong | `backend/app/services/account_manager.py` — 13 cặp chuyển hợp lệ; chuyển sai ném `InvalidTransitionError` |
+| Warm-up Pipeline 7 ngày | Xong | `backend/app/services/warmup_service.py` + `workers/warmup_task.py` |
+| Checkpoint Detection 3 lớp | Xong | `backend/app/services/anti_ban.py` — URL, tiêu đề (Việt + Anh), DOM |
+| Shadowban Detection | Xong | `anti_ban.ShadowbanDetector` — đối chiếu comment có thật sự hiện trên trang |
+| Proxy Manager | Xong | `backend/app/services/proxy_manager.py` + `/api/health/proxies/*` |
+| Adaptive Rate Limiter | Xong | `anti_ban.compute_delay` — tỉ lệ thành công ≥0.95 giãn ×0.8, <0.50 kịch trần; luôn kẹp trong [180, 1800] giây |
+| Health Monitor Dashboard | Xong | `/health` + `backend/app/routers/health.py` |
 
 **Tự phục hồi đã hiện thực:** `workers/health_check_task.py` phát hiện clone mất cookie → chuyển
 `CHECKPOINT` → tìm clone dự phòng thay thế; clone hết hạn nghỉ tự đánh thức; proxy chết tự xoay
 (hết proxy thì giữ IP cũ, thà chậm còn hơn dừng hẳn).
 
-> ⚠️ **Còn lại:** các ngưỡng (3 lỗi → cooldown, 5 lỗi → cảnh báo, trần 20 comment/ngày) đang là
+> **Còn lại:** các ngưỡng (3 lỗi → cooldown, 5 lỗi → cảnh báo, trần 20 comment/ngày) đang là
 > con số đặt theo kinh nghiệm cộng đồng. Chỉ dữ liệu chạy thật mới hiệu chỉnh được.
 
 ---
@@ -155,13 +155,13 @@ nút *Lấy câu từ kịch bản* sinh sẵn một biến thể đã né hàng
 
 | Task | Trạng thái | Ghi chú |
 |---|---|---|
-| Billing Service (hạn mức, hết hạn) | ✅ | `services/plans.py` là nguồn sự thật duy nhất về quota; `services/quota.py` cưỡng chế ở tầng router |
-| 3 gói cước 199k / 399k / 799k | ✅ | Có test: khách Starter thêm group thứ 6 bị chặn 403, nâng Pro thì thêm được |
-| Vòng đời thanh toán | ✅ | `/api/billing/subscribe` sinh mã đối soát → `/api/billing/confirm` kích hoạt, gia hạn **cộng dồn** vào hạn cũ |
-| **Cổng thanh toán VNPay/Momo** | ⏳ **Chặn** | Cần tài khoản merchant + khóa bí mật. Điểm cắm là `create_payment_intent` trong `routers/billing.py`. |
-| **Onboarding Wizard 5 bước** | ⏳ Chưa làm | Không chặn; là việc UI thuần, xếp sau vì các màn hình cốt lõi có giá trị hơn. |
-| **Landing Page / Referral** | ⏳ Chưa làm | Việc marketing, nằm ngoài phạm vi mã sản phẩm. |
-| **Admin Dashboard** | ⏳ Chưa làm | Đã có sẵn `get_admin_user` và cờ `is_admin` để cắm vào. |
+| Billing Service (hạn mức, hết hạn) | Xong | `services/plans.py` là nguồn sự thật duy nhất về quota; `services/quota.py` cưỡng chế ở tầng router |
+| 3 gói cước 199k / 399k / 799k | Xong | Có test: khách Starter thêm group thứ 6 bị chặn 403, nâng Pro thì thêm được |
+| Vòng đời thanh toán | Xong | `/api/billing/subscribe` sinh mã đối soát → `/api/billing/confirm` kích hoạt, gia hạn **cộng dồn** vào hạn cũ |
+| **Cổng thanh toán VNPay/Momo** | **Chặn** | Cần tài khoản merchant + khóa bí mật. Điểm cắm là `create_payment_intent` trong `routers/billing.py`. |
+| **Onboarding Wizard 5 bước** | Chưa làm | Không chặn; là việc UI thuần, xếp sau vì các màn hình cốt lõi có giá trị hơn. |
+| **Landing Page / Referral** | Chưa làm | Việc marketing, nằm ngoài phạm vi mã sản phẩm. |
+| **Admin Dashboard** | Chưa làm | Đã có sẵn `get_admin_user` và cờ `is_admin` để cắm vào. |
 
 ---
 

@@ -1,8 +1,8 @@
-# 📋 DANH MỤC CÁC KẾ HOẠCH TRIỂN KHAI CHI TIẾT
+# DANH MỤC CÁC KẾ HOẠCH TRIỂN KHAI CHI TIẾT
 
 > Mỗi Phase trong [Master Plan](file:///f:/Clone/fb-tool/docs/03_MASTER_PLAN.md) được tách thành 1 tài liệu triển khai chi tiết riêng, bao gồm: Task breakdown theo ngày, code reference chính xác đến dòng, pseudocode, acceptance criteria và test cases.
 
-> 📊 **Xem trước khi đọc plan:** [TÌNH TRẠNG BÀN GIAO](file:///f:/Clone/fb-tool/docs/plans/DELIVERY_STATUS.md) — đối chiếu từng task trong plan với mã nguồn đã thực sự tồn tại, kèm bằng chứng test và danh sách việc còn bị chặn bởi yếu tố ngoài (tài khoản Facebook thật, VPS, cổng thanh toán).
+> **Xem trước khi đọc plan:** [TÌNH TRẠNG BÀN GIAO](file:///f:/Clone/fb-tool/docs/plans/DELIVERY_STATUS.md) — đối chiếu từng task trong plan với mã nguồn đã thực sự tồn tại, kèm bằng chứng test và danh sách việc còn bị chặn bởi yếu tố ngoài (tài khoản Facebook thật, VPS, cổng thanh toán).
 
 ---
 

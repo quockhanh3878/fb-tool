@@ -1,10 +1,10 @@
-# 🎯 Facebook Group Lead Hunter & Auto Engagement Platform (CommHunter AI)
+# Facebook Group Lead Hunter & Auto Engagement Platform (CommHunter AI)
 
 Dự án phát triển nền tảng tự động hóa tìm kiếm khách hàng, giám sát hội nhóm Facebook, lọc bài viết tiềm năng và tự động tương tác/ứng tuyển theo kịch bản thông minh bằng AI.
 
 ---
 
-## 📚 Mục lục Tài liệu dự án
+## Mục lục Tài liệu dự án
 
 Toàn bộ tài liệu chi tiết đã được biên soạn và phân loại trong thư mục [`docs/`](docs/):
 
@@ -21,7 +21,7 @@ Toàn bộ tài liệu chi tiết đã được biên soạn và phân loại tr
    * Hai chế độ vận hành: Semi-Auto (duyệt qua Telegram) & Full-Auto.
    * Thiết kế Tech Stack, Bảng giá gói cước dịch vụ và Lộ trình phát triển sản phẩm.
 
-3. **[03. MASTER PLAN — Kế hoạch tổng thể phát triển nền tảng](docs/03_MASTER_PLAN.md)** ⭐
+3. **[03. MASTER PLAN — Kế hoạch tổng thể phát triển nền tảng](docs/03_MASTER_PLAN.md)**
    * Kiến trúc hệ thống 5 tầng (Client → API → Worker → Data → Infra) với sơ đồ Mermaid.
    * Ma trận tái sử dụng mã nguồn chi tiết: Mapping cụ thể từng file/function từ 3 repo vào module mới.
    * Database Schema PostgreSQL đầy đủ với ER Diagram (9 bảng).
@@ -35,7 +35,7 @@ Toàn bộ tài liệu chi tiết đã được biên soạn và phân loại tr
 
 ---
 
-## 📁 Cấu trúc Thư mục Dự án
+## Cấu trúc Thư mục Dự án
 
 ```
 fb-tool/
@@ -43,16 +43,16 @@ fb-tool/
 ├── docs/                                     # Kho tài liệu thiết kế & phân tích
 │   ├── 01_EXISTING_SYSTEMS_ANALYSIS.md       # Phân tích kỹ thuật 3 repo có sẵn
 │   ├── 02_PLATFORM_SPECIFICATION_AND_IDEAS.md # Ý tưởng nền tảng, Anti-ban & SaaS
-│   ├── 03_MASTER_PLAN.md                     # ⭐ Kế hoạch tổng thể phát triển
-│   └── plans/                                # 📋 Kế hoạch triển khai chi tiết từng Phase
+│   ├── 03_MASTER_PLAN.md                     # Kế hoạch tổng thể phát triển
+│   └── plans/                                # Kế hoạch triển khai chi tiết từng Phase
 │       ├── README.md                         # Danh mục & Tổng quan các plans
 │       ├── phase1_mvp_detail.md              # Phase 1: MVP Script (Tuần 1-2)
 │       ├── phase2_dashboard_detail.md        # Phase 2: Web Dashboard (Tuần 3-6)
 │       ├── phase3_antiban_detail.md          # Phase 3: Anti-Ban Engine (Tuần 7-10)
 │       ├── phase4_commercial_detail.md       # Phase 4: Thương mại hóa (Tuần 11+)
-│       └── DELIVERY_STATUS.md                # 📊 Đối chiếu plan ↔ mã nguồn thực tế
+│       └── DELIVERY_STATUS.md                # Đối chiếu plan ↔ mã nguồn thực tế
 │
-├── commhunter/                               # ⚙️ MÃ NGUỒN SẢN PHẨM (Phase 1 MVP)
+├── commhunter/                               # MÃ NGUỒN SẢN PHẨM (Phase 1 MVP)
 │   ├── commhunter.py                         # Entry point CLI: run / login / status
 │   ├── scout_worker.py                       # Quét bài từ group
 │   ├── shooter_worker.py                     # Đăng comment
@@ -68,7 +68,7 @@ fb-tool/
 │   ├── tests/test_pipeline.py                # Smoke test offline (104 assertion)
 │   └── data/                                 # Runtime — ĐÃ bị .gitignore chặn
 │
-├── backend/                                  # 🌐 API SaaS ĐA KHÁCH HÀNG (Phase 2-4)
+├── backend/                                  # API SaaS ĐA KHÁCH HÀNG (Phase 2-4)
 │   ├── app/
 │   │   ├── main.py                           # FastAPI app + CORS + /health
 │   │   ├── config.py / database.py / security.py / dependencies.py
@@ -84,7 +84,7 @@ fb-tool/
 │   ├── tests/test_api.py                     # 132 assertion offline (SQLite)
 │   ├── requirements.txt / Dockerfile / docker-compose.yaml
 │
-├── frontend/                                 # 🖥️ DASHBOARD Next.js 16 + Tailwind 4
+├── frontend/                                 # DASHBOARD Next.js 16 + Tailwind 4
 │   ├── app/                                  # 12 route: login, register, dashboard,
 │   │                                         #   campaigns, posts, clones, health,
 │   │                                         #   stats, billing, settings
@@ -99,7 +99,7 @@ fb-tool/
 
 ---
 
-## 🚀 Chạy thử nhanh
+## Chạy thử nhanh
 
 ```bash
 cd commhunter
@@ -133,11 +133,11 @@ python tests/test_browser.py --live            # + mở Chrome thật kiểm ch�
   phục vụ test tay. Mở Chrome kèm cờ `--remote-debugging-port=9222`. Khi attach:
   không spoof vân tay, không áp proxy, không tự đóng browser của bạn.
 
-> ✅ **Sprint 0 Hardening đã hoàn thành.** 4 lỗi mức 🔴 (warmup click bừa, verify dương tính giả, rate limit đếm sai, không có circuit-breaker) đã được xử lý triệt để. Bộ test pipeline offline đạt **104/104 PASS**. Hệ thống an toàn và sẵn sàng bước vào Sprint 3 kiểm thử trên Facebook thật.
+> **Sprint 0 Hardening đã hoàn thành.** 4 lỗi mức nặng (warmup click bừa, verify dương tính giả, rate limit đếm sai, không có circuit-breaker) đã được xử lý triệt để. Bộ test pipeline offline đạt **104/104 PASS**. Hệ thống an toàn và sẵn sàng bước vào Sprint 3 kiểm thử trên Facebook thật.
 
 ---
 
-## 🌐 Chạy nền tảng SaaS (Backend + Dashboard)
+## Chạy nền tảng SaaS (Backend + Dashboard)
 
 ### Cách 1 — Docker (đầy đủ 5 service: db, redis, api, worker, beat)
 
@@ -197,10 +197,10 @@ Cả hai bộ test chạy **hoàn toàn offline** — không cần Facebook, Ope
 
 ---
 
-## ⚡ Các bước tiếp theo (Next Steps)
+## Các bước tiếp theo (Next Steps)
 Xem chi tiết tại [03. Master Plan — Mục 9: Lộ trình phát triển](docs/03_MASTER_PLAN.md#9-lộ-trình-phát-triển-4-phase).
 
-1. **Phase 1 (Tuần 1-2):** ✅ MVP + Sprint 0 Hardening hoàn tất (104/104 PASS) → ⏳ **Còn lại: Sprint 3 — kiểm thử trên Facebook thật.** Việc này bắt buộc phải có tài khoản clone thật, cookie thật và thời gian theo dõi nhiều ngày nên không thể làm offline.
-2. **Phase 2 (Tuần 3-6):** ✅ Backend FastAPI đa khách (65 operation, 11 bảng, JWT, Celery) + ✅ Dashboard Next.js 13 màn hình + ✅ Docker Compose 5 service + ✅ Alembic migration.
-3. **Phase 3 (Tuần 7-10):** ✅ Máy trạng thái 7 trạng thái, ủ ấm 7 ngày, phát hiện checkpoint 3 lớp, phát hiện shadowban, giãn nhịp thích ứng, pool proxy, clone dự phòng tự thay → ⏳ **Còn lại: hiệu chỉnh ngưỡng bằng dữ liệu chạy thật.**
-4. **Phase 4 (Tuần 11+):** ✅ 3 gói cước + hạn mức cưỡng chế + vòng đời thanh toán → ⏳ **Còn lại: đấu nối cổng thanh toán thật (VNPay/Momo) — cần tài khoản merchant.**
+1. **Phase 1 (Tuần 1-2):** MVP + Sprint 0 Hardening hoàn tất (104/104 PASS) → **Còn lại: Sprint 3 — kiểm thử trên Facebook thật.** Việc này bắt buộc phải có tài khoản clone thật, cookie thật và thời gian theo dõi nhiều ngày nên không thể làm offline.
+2. **Phase 2 (Tuần 3-6):** Backend FastAPI đa khách (65 operation, 11 bảng, JWT, Celery) + Dashboard Next.js 13 màn hình + Docker Compose 5 service + Alembic migration.
+3. **Phase 3 (Tuần 7-10):** Máy trạng thái 7 trạng thái, ủ ấm 7 ngày, phát hiện checkpoint 3 lớp, phát hiện shadowban, giãn nhịp thích ứng, pool proxy, clone dự phòng tự thay → **Còn lại: hiệu chỉnh ngưỡng bằng dữ liệu chạy thật.**
+4. **Phase 4 (Tuần 11+):** 3 gói cước + hạn mức cưỡng chế + vòng đời thanh toán → **Còn lại: đấu nối cổng thanh toán thật (VNPay/Momo) — cần tài khoản merchant.**

@@ -122,7 +122,7 @@ class TelegramBot:
                 parse_mode="MarkdownV2",
                 reply_markup=keyboard,
             )
-            logger.info(f"📨 Đã gửi thông báo Telegram cho bài: {post.author_name}")
+            logger.info(f"Đã gửi thông báo Telegram cho bài: {post.author_name}")
             return msg.message_id
 
         except Exception as e:
@@ -305,7 +305,7 @@ class TelegramBot:
 
         app.add_handler(CallbackQueryHandler(handle_callback))
 
-        logger.info("🤖 Telegram bot bắt đầu polling...")
+        logger.info("Telegram bot bắt đầu polling...")
         await app.initialize()
         await app.start()
         await app.updater.start_polling()
@@ -330,7 +330,7 @@ class TelegramBot:
         except Exception as e:
             logger.debug(f"stop_polling/shutdown: {e}")
         self._application = None
-        logger.info("🤖 Telegram bot đã dừng")
+        logger.info("Telegram bot đã dừng")
 
     async def close(self):
         """Dừng bot, giải phóng application và session bot."""

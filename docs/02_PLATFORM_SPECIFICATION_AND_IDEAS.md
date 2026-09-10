@@ -1,4 +1,4 @@
-# 🚀 ĐẶC TẢ Ý TƯỞNG & KIẾN TRÚC NỀN TẢNG "COMMHUNTER AI" (F-LEADS)
+# ĐẶC TẢ Ý TƯỞNG & KIẾN TRÚC NỀN TẢNG "COMMHUNTER AI" (F-LEADS)
 
 > **Tầm nhìn:** Nền tảng SaaS tự phục vụ (Self-Service Platform) giúp các cá nhân, creator, shop dịch vụ (như viết truyện commission, vẽ commission, dịch thuật, content marketing...) **tự động hóa 100% quy trình săn tìm khách hàng, ứng tuyển và duy trì tương tác trong hội nhóm Facebook** mà không bị Facebook quét phạt hay dính gậy.
 
@@ -63,7 +63,7 @@ graph LR
 ### 2.3 Xưởng kịch bản phản hồi (Comment Studio & AI Responder)
 Khách hàng có thể lựa chọn linh hoạt giữa 2 phong cách cmt:
 * **Cách 1: Mẫu kịch bản Spin-Tax truyền thống:**
-  * `{Chào bạn|Hello cậu|Hi bạn}, mình bên {Nyatymita Writing|dịch vụ viết truyện} nhận thể loại này nhé. {Bạn check ib mình gửi demo nha|Ib mình trao đổi chi tiết nhé!} ✨`
+  * `{Chào bạn|Hello cậu|Hi bạn}, mình bên {Nyatymita Writing|dịch vụ viết truyện} nhận thể loại này nhé. {Bạn check ib mình gửi demo nha|Ib mình trao đổi chi tiết nhé!} `
 * **Cách 2: AI Tự sinh lời chào cá nhân hóa theo bài đăng (Khuyên dùng):**
   * Bot đọc nội dung bài đăng, tìm các chi tiết đặc thù (ví dụ: khách muốn viết fic đề tài cung đấu) và tự tạo bình luận:
     > *"Bên mình chuyên nhận thể loại cung đấu/cổ trang, từng hoàn thành nhiều bộ cùng đề tài. Bạn ghé qua portfolio mình ghim trên đầu trang cá nhân để xem thử văn phong nhé!"*

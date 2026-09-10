@@ -1,4 +1,4 @@
-# 🗺️ MASTER PLAN — NỀN TẢNG COMMHUNTER AI (F-LEADS)
+# MASTER PLAN — NỀN TẢNG COMMHUNTER AI (F-LEADS)
 
 > **Tên dự án:** CommHunter AI / F-Leads
 > **Tầm nhìn:** Nền tảng SaaS tự phục vụ giúp creator / shop dịch vụ tự động hóa 100% quy trình săn khách hàng tiềm năng, ứng tuyển và duy trì tương tác trong hội nhóm Facebook — an toàn, thông minh, 24/7.
@@ -13,7 +13,7 @@
 
 ## MỤC LỤC
 
-0. [**Trạng thái triển khai**](#0-trạng-thái-triển-khai) ⭐ *đọc mục này trước*
+0. [**Trạng thái triển khai**](#0-trạng-thái-triển-khai) *đọc mục này trước*
 1. [Tổng quan kiến trúc hệ thống](#1-tổng-quan-kiến-trúc-hệ-thống)
 2. [Ma trận tái sử dụng mã nguồn](#2-ma-trận-tái-sử-dụng-mã-nguồn)
 3. [Thiết kế Database Schema](#3-thiết-kế-database-schema)
@@ -25,7 +25,7 @@
 9. [Lộ trình phát triển 4 Phase](#9-lộ-trình-phát-triển-4-phase)
 10. [Rủi ro & Biện pháp giảm thiểu](#10-rủi-ro--biện-pháp-giảm-thiểu)
 11. [KPIs & Tiêu chí thành công](#11-kpis--tiêu-chí-thành-công)
-12. [**Nợ kỹ thuật & Backlog Hardening**](#12-nợ-kỹ-thuật--backlog-hardening) ⭐
+12. [**Nợ kỹ thuật & Backlog Hardening**](#12-nợ-kỹ-thuật--backlog-hardening)
 
 ---
 
@@ -41,23 +41,23 @@
 
 | # | Thành phần | File | Trạng thái | Ghi chú |
 |---|---|---|---|---|
-| 1 | Data models | `commhunter/models.py` | ✅ Xong | 8 dataclass + 2 Enum |
-| 2 | Config loader | `commhunter/config_loader.py` | ✅ Xong | YAML + resolve biến môi trường |
-| 3 | Hằng số & ngưỡng | `commhunter/constants.py` | ✅ Xong | Gồm `EXTRACT_POST_JS` |
-| 4 | Browser Manager | `commhunter/browser_manager.py` | ✅ Xong | Stealth shim tương thích v1/v2 |
-| 5 | Scout Worker | `commhunter/scout_worker.py` | ✅ Xong | Chưa kiểm thử trên group thật |
-| 6 | Dedup Store | `commhunter/dedup_store.py` | ✅ Xong | 3/9 bảng của schema đích |
-| 7 | AI Engine | `commhunter/ai_engine.py` | ✅ Xong | Lọc + sinh comment, có retry |
-| 8 | Human Emulator | `commhunter/human_emulator.py` | ✅ Xong | Safe hover + scroll bias + Shift+Enter giữ dòng (đã vá N-01, N-09) |
-| 9 | Shooter Worker | `commhunter/shooter_worker.py` | ✅ Xong | Verify 2 tín hiệu (empty composer + text outside) + shadowban detection thật (đã vá N-02, N-03, N-04) |
-| 10 | Telegram Bot | `commhunter/telegram_bot.py` | ✅ Xong | Inline Keyboard + Semi-Auto + singleton bot (đã vá N-07, N-08) |
-| 11 | **Entry Point / Orchestrator** | `commhunter/commhunter.py` | ✅ Xong | CLI `run` / `login` / `status` |
-| 12 | Dependencies & Package | `commhunter/requirements.txt` & `__init__.py` | ✅ Xong | Package hóa Python chuẩn (N-14) |
-| 13 | Cấu hình & Pháp lý | `configs/example.yaml`, `nyatymita.yaml`, `NOTICE` | ✅ Xong | Đủ cấu hình mẫu + khách thực tế + bản quyền |
-| 14 | `.gitignore` | `.gitignore` (gốc) | ✅ Xong | Chặn cookie & API key lọt lên git |
-| 15 | Smoke test | `commhunter/tests/test_pipeline.py` | ✅ Xong | 104 assertion, 100% PASS offline |
-| 16 | Kiểm thử với Facebook thật | — | ❌ **CHƯA LÀM** | Toàn bộ TC-01…TC-09 của Sprint 3 |
-| 17 | Bàn giao khách đầu tiên | — | ❌ Chưa | Phụ thuộc mục 16 |
+| 1 | Data models | `commhunter/models.py` | Xong | 8 dataclass + 2 Enum |
+| 2 | Config loader | `commhunter/config_loader.py` | Xong | YAML + resolve biến môi trường |
+| 3 | Hằng số & ngưỡng | `commhunter/constants.py` | Xong | Gồm `EXTRACT_POST_JS` |
+| 4 | Browser Manager | `commhunter/browser_manager.py` | Xong | Stealth shim tương thích v1/v2 |
+| 5 | Scout Worker | `commhunter/scout_worker.py` | Xong | Chưa kiểm thử trên group thật |
+| 6 | Dedup Store | `commhunter/dedup_store.py` | Xong | 3/9 bảng của schema đích |
+| 7 | AI Engine | `commhunter/ai_engine.py` | Xong | Lọc + sinh comment, có retry |
+| 8 | Human Emulator | `commhunter/human_emulator.py` | Xong | Safe hover + scroll bias + Shift+Enter giữ dòng (đã vá N-01, N-09) |
+| 9 | Shooter Worker | `commhunter/shooter_worker.py` | Xong | Verify 2 tín hiệu (empty composer + text outside) + shadowban detection thật (đã vá N-02, N-03, N-04) |
+| 10 | Telegram Bot | `commhunter/telegram_bot.py` | Xong | Inline Keyboard + Semi-Auto + singleton bot (đã vá N-07, N-08) |
+| 11 | **Entry Point / Orchestrator** | `commhunter/commhunter.py` | Xong | CLI `run` / `login` / `status` |
+| 12 | Dependencies & Package | `commhunter/requirements.txt` & `__init__.py` | Xong | Package hóa Python chuẩn (N-14) |
+| 13 | Cấu hình & Pháp lý | `configs/example.yaml`, `nyatymita.yaml`, `NOTICE` | Xong | Đủ cấu hình mẫu + khách thực tế + bản quyền |
+| 14 | `.gitignore` | `.gitignore` (gốc) | Xong | Chặn cookie & API key lọt lên git |
+| 15 | Smoke test | `commhunter/tests/test_pipeline.py` | Xong | 104 assertion, 100% PASS offline |
+| 16 | Kiểm thử với Facebook thật | — | **CHƯA LÀM** | Toàn bộ TC-01…TC-09 của Sprint 3 |
+| 17 | Bàn giao khách đầu tiên | — | Chưa | Phụ thuộc mục 16 |
 
 **Kết luận:** Phase 1 đã có **bộ khung chạy được**, nhưng chưa có **bằng chứng
 hoạt động trên Facebook thật**. Ranh giới này là mấu chốt — mọi ước lượng cho
@@ -701,8 +701,8 @@ async def detect_checkpoint(page) -> str | None:
 
 Thay vì dán link trong comment (dễ bị quét):
 ```
-❌ Sai:  "Mình nhận viết, xem tại https://facebook.com/NyatyWriting"
-✅ Đúng: "Mình chuyên thể loại này, portfolio và feedback mình ghim
+Sai:  "Mình nhận viết, xem tại https://facebook.com/NyatyWriting"
+Đúng: "Mình chuyên thể loại này, portfolio và feedback mình ghim
           ở đầu trang cá nhân, bạn ghé xem thử nhé!"
 ```
 
@@ -810,9 +810,9 @@ if post.existing_comment_count > campaign.max_competitor_comments:
 
 **Sprint 3 — Kiểm thử & Bàn giao (Sẵn sàng kiểm thử Facebook thật):**
 
-- [x] **Sprint 0 Hardening:** đã xử lý triệt để 4 lỗi 🔴 (N-01 đến N-04), bộ test pipeline đạt 66/66 PASS offline.
-- [x] **Hardening đợt 2 (N-05 đến N-08):** đã xử lý triệt để 4 lỗi 🟠 (dynamic service_info, regex post_id, singleton telegram bot, validate chat_id), bộ test pipeline đạt 84/84 PASS offline.
-- [x] **Hardening đợt 3 (N-09 đến N-14) & Pháp lý:** xử lý triệt để 6 nợ kỹ thuật 🟡 (Shift+Enter bảo tồn xuống dòng, get_running_loop, SQL whitelist, hằng số delay, package `__init__.py`), bổ sung file `NOTICE`, bộ test pipeline đạt 104/104 PASS offline.
+- [x] **Sprint 0 Hardening:** đã xử lý triệt để 4 lỗi nặng (N-01 đến N-04), bộ test pipeline đạt 66/66 PASS offline.
+- [x] **Hardening đợt 2 (N-05 đến N-08):** đã xử lý triệt để 4 lỗi vừa (dynamic service_info, regex post_id, singleton telegram bot, validate chat_id), bộ test pipeline đạt 84/84 PASS offline.
+- [x] **Hardening đợt 3 (N-09 đến N-14) & Pháp lý:** xử lý triệt để 6 nợ kỹ thuật nhẹ (Shift+Enter bảo tồn xuống dòng, get_running_loop, SQL whitelist, hằng số delay, package `__init__.py`), bổ sung file `NOTICE`, bộ test pipeline đạt 104/104 PASS offline.
 - [x] Cấu hình `configs/nyatymita.yaml` với group thực tế cho khách đầu tiên.
 - [ ] TC-01 → TC-09: chạy đủ 9 test case tích hợp trên group Facebook thật
 - [ ] Chạy thử 24h trên VPS, giám sát log
@@ -945,7 +945,7 @@ gantt
 
 ## 12. Nợ kỹ thuật & Backlog Hardening
 
-> Kết quả rà soát mã nguồn ngày 08/09/2026. **Mức 🔴 phải xử lý xong TRƯỚC khi
+> Kết quả rà soát mã nguồn ngày 08/09/2026. **Mức nặng phải xử lý xong TRƯỚC khi
 > chạy trên Facebook thật** — đây đều là lỗi khiến hệ thống "chạy mà sai", nguy
 > hiểm hơn crash vì không ai biết để sửa.
 
@@ -953,38 +953,38 @@ gantt
 
 | Mã | Vấn đề | File | Cách xử lý |
 |---|---|---|---|
-| ✅ H-01 | `playwright-stealth` 2.x bỏ `stealth_async` → `ImportError` bị nuốt, browser chạy TRẦN mà log báo "chưa cài đặt" | `browser_manager.py` | Thêm `apply_stealth()` tương thích v1/v2 + `stealth_status()`. Lệnh `status` báo rõ stealth có kích hoạt không |
-| ✅ H-02 | `check_session()` đóng context nhưng để lại entry chết trong `self._contexts` → `get_stealth_page()` trả page trên context đã đóng | `browser_manager.py` | Dọn dẹp trong khối `finally`, gỡ khỏi dict |
-| ✅ H-03 | `send_result_notification()` dùng `parse_mode="Markdown"` với text CHƯA escape → Telegram trả 400, mất hẳn thông báo kết quả | `telegram_bot.py` | Chuyển MarkdownV2 + `_escape_md` + fallback plain-text |
-| ✅ H-04 | `_escape_md` không escape `\` trước → hỏng chuỗi khi nội dung chứa backslash | `telegram_bot.py` | Escape backslash đầu tiên |
-| ✅ H-05 | Không có cách dừng Telegram polling → Ctrl+C để lại tiến trình treo | `telegram_bot.py` | Thêm `stop_polling()`, gọi trong `CommHunterApp.shutdown()` |
-| ✅ H-06 | Biến môi trường chưa đặt vẫn lọt tới runtime thành lỗi 401 khó hiểu; `_validate_config` chỉ log warning | `commhunter.py` | `find_config_problems()` chặn ngay lúc khởi động, `run` từ chối chạy, `status` trả exit code 1 |
-| ✅ H-07 | So khớp từ khóa phân biệt dấu → bỏ sót phần lớn bài viết vì người Việt hay gõ không dấu ("can viet gap") | `commhunter.py` | `normalize_vi()` bỏ dấu + hạ chữ thường trước khi so khớp |
-| ✅ H-08 | Không có cách tra ngược bài viết từ `content_hash` (cần cho callback Telegram) | `dedup_store.py` | Thêm `get_post_by_hash()` + `row_to_post()` |
-| ✅ N-01 | Warmup click link ngẫu nhiên trên Facebook (`random_browse`) có nguy cơ click rời nhóm, report, logout | `human_emulator.py`, `constants.py` | Bỏ hẳn click/go_back, thay bằng `safe_hover()` chỉ duyệt `[role="feed"] a[href]` qua blocklist URL và label, thêm bias cuộn xuống 80% (`WARMUP_SCROLL_DOWN_BIAS`) |
-| ✅ N-02 | Verify comment tìm trong `body` cho dương tính giả khi Enter không gửi được (text còn trong composer) | `shooter_worker.py` | Kiểm tra 2 tín hiệu: `_composer_is_empty` (bắt buộc trống) và `_text_present_outside` (TreeWalker duyệt body loại trừ composer) |
-| ✅ N-03 | `_verify_comment` bắt exception rồi return `SUCCESS` làm sai lệch kết quả | `shooter_worker.py` | Đổi nhánh exception thành `CommentStatus.FAILED`, phát hiện chính xác `SHADOWBANNED` nếu composer trống nhưng text không ra ngoài |
-| ✅ N-04 | Rate limit chỉ đếm comment thành công; gọi trực tiếp post_comment mất bản ghi | `dedup_store.py`, `shooter_worker.py`, `commhunter.py` | Đổi quota sang đếm LƯỢT (`get_today_action_count`). Thêm `record_attempt`/`finish_attempt` theo dõi mọi lần thử. Thêm Circuit Breaker tự ngắt sau 3 lỗi liên tiếp |
-| ✅ N-05 | Fallback comment hardcode ngành nghề ("viết truyện chữ") nằm trong code lõi | `ai_engine.py` | Bỏ hardcode novel, dynamic prompt lấy theo `service_info.get("name")`. Lỗi API trả `""` để orchestrator bỏ qua bài an toàn thay vì comment nhầm nội dung |
-| ✅ N-06 | `post_id` parse bằng `split("/")[-2]` lỗi khi URL không có `/` cuối hoặc dạng query parameter | `scout_worker.py` | Thêm pure function `extract_post_id()` hỗ trợ regex cho `/(?:posts\|permalink)/(\d+)`, `story_fbid`, `fbid`, và trailing numeric ID |
-| ✅ N-07 | Tạo `Bot()` mới mỗi lần gửi tin, không `shutdown()` gây rò rỉ session | `telegram_bot.py`, `commhunter.py` | Áp dụng Singleton `_get_bot()`, tái sử dụng trong toàn bộ class, bổ sung `close()` gọi `await self._bot.shutdown()` khi dừng ứng dụng |
-| ✅ N-08 | Callback Inline Keyboard không kiểm tra `chat_id` và thiếu try/except split | `telegram_bot.py` | Thêm kiểm tra `effective_chat.id == config.chat_id` (cảnh báo + alert nếu sai), bọc `data.split(":", 1)` bằng try/except ValueError tránh crash |
-| ✅ N-09 | `human_type` mất định dạng xuống dòng khi gõ comment AI | `human_emulator.py` | Tách dòng theo `\n`, dùng tổ hợp phím `Shift+Enter` để xuống dòng chuẩn xác trong ô soạn thảo Facebook mà không làm gửi bài sớm |
-| ✅ N-10 | `_increment_daily_stat` nội suy cột f-string chưa kiểm soát | `dedup_store.py` | Bổ sung whitelist `ALLOWED_STAT_COLUMNS`, từ chối và raise `ValueError` nếu tên cột không nằm trong whitelist |
-| ✅ N-11 | `asyncio.get_event_loop()` đã deprecated (Python 3.10+) | `ai_engine.py`, `human_emulator.py`, `browser_manager.py` | Chuyển đổi toàn bộ sang `asyncio.get_running_loop()`, sạch 100% cảnh báo |
-| ✅ N-12 | Hằng số giãn cách và ngưỡng an toàn chưa đồng bộ | `constants.py`, `scout_worker.py`, `models.py` | Dùng `SCAN_DELAY_MIN_SEC`/`SCAN_DELAY_MAX_SEC` thay cho hardcode; đồng bộ `DEFAULT_DB_PATH` và `MAX_COMMENTS_PER_DAY` |
-| ✅ N-13 | Ràng buộc đồng bộ đơn luồng của SQLite chưa được ghi chú | `dedup_store.py` | Bổ sung docstring kiến trúc cảnh báo rõ ràng về ràng buộc single-thread event loop và định hướng connection pool cho Phase 2 |
-| ✅ N-14 | Thiếu `__init__.py` đóng gói package | `commhunter/__init__.py` | Tạo file `__init__.py` chuẩn hóa package và export đầy đủ models, stores, loaders |
+| H-01 | `playwright-stealth` 2.x bỏ `stealth_async` → `ImportError` bị nuốt, browser chạy TRẦN mà log báo "chưa cài đặt" | `browser_manager.py` | Thêm `apply_stealth()` tương thích v1/v2 + `stealth_status()`. Lệnh `status` báo rõ stealth có kích hoạt không |
+| H-02 | `check_session()` đóng context nhưng để lại entry chết trong `self._contexts` → `get_stealth_page()` trả page trên context đã đóng | `browser_manager.py` | Dọn dẹp trong khối `finally`, gỡ khỏi dict |
+| H-03 | `send_result_notification()` dùng `parse_mode="Markdown"` với text CHƯA escape → Telegram trả 400, mất hẳn thông báo kết quả | `telegram_bot.py` | Chuyển MarkdownV2 + `_escape_md` + fallback plain-text |
+| H-04 | `_escape_md` không escape `\` trước → hỏng chuỗi khi nội dung chứa backslash | `telegram_bot.py` | Escape backslash đầu tiên |
+| H-05 | Không có cách dừng Telegram polling → Ctrl+C để lại tiến trình treo | `telegram_bot.py` | Thêm `stop_polling()`, gọi trong `CommHunterApp.shutdown()` |
+| H-06 | Biến môi trường chưa đặt vẫn lọt tới runtime thành lỗi 401 khó hiểu; `_validate_config` chỉ log warning | `commhunter.py` | `find_config_problems()` chặn ngay lúc khởi động, `run` từ chối chạy, `status` trả exit code 1 |
+| H-07 | So khớp từ khóa phân biệt dấu → bỏ sót phần lớn bài viết vì người Việt hay gõ không dấu ("can viet gap") | `commhunter.py` | `normalize_vi()` bỏ dấu + hạ chữ thường trước khi so khớp |
+| H-08 | Không có cách tra ngược bài viết từ `content_hash` (cần cho callback Telegram) | `dedup_store.py` | Thêm `get_post_by_hash()` + `row_to_post()` |
+| N-01 | Warmup click link ngẫu nhiên trên Facebook (`random_browse`) có nguy cơ click rời nhóm, report, logout | `human_emulator.py`, `constants.py` | Bỏ hẳn click/go_back, thay bằng `safe_hover()` chỉ duyệt `[role="feed"] a[href]` qua blocklist URL và label, thêm bias cuộn xuống 80% (`WARMUP_SCROLL_DOWN_BIAS`) |
+| N-02 | Verify comment tìm trong `body` cho dương tính giả khi Enter không gửi được (text còn trong composer) | `shooter_worker.py` | Kiểm tra 2 tín hiệu: `_composer_is_empty` (bắt buộc trống) và `_text_present_outside` (TreeWalker duyệt body loại trừ composer) |
+| N-03 | `_verify_comment` bắt exception rồi return `SUCCESS` làm sai lệch kết quả | `shooter_worker.py` | Đổi nhánh exception thành `CommentStatus.FAILED`, phát hiện chính xác `SHADOWBANNED` nếu composer trống nhưng text không ra ngoài |
+| N-04 | Rate limit chỉ đếm comment thành công; gọi trực tiếp post_comment mất bản ghi | `dedup_store.py`, `shooter_worker.py`, `commhunter.py` | Đổi quota sang đếm LƯỢT (`get_today_action_count`). Thêm `record_attempt`/`finish_attempt` theo dõi mọi lần thử. Thêm Circuit Breaker tự ngắt sau 3 lỗi liên tiếp |
+| N-05 | Fallback comment hardcode ngành nghề ("viết truyện chữ") nằm trong code lõi | `ai_engine.py` | Bỏ hardcode novel, dynamic prompt lấy theo `service_info.get("name")`. Lỗi API trả `""` để orchestrator bỏ qua bài an toàn thay vì comment nhầm nội dung |
+| N-06 | `post_id` parse bằng `split("/")[-2]` lỗi khi URL không có `/` cuối hoặc dạng query parameter | `scout_worker.py` | Thêm pure function `extract_post_id()` hỗ trợ regex cho `/(?:posts\|permalink)/(\d+)`, `story_fbid`, `fbid`, và trailing numeric ID |
+| N-07 | Tạo `Bot()` mới mỗi lần gửi tin, không `shutdown()` gây rò rỉ session | `telegram_bot.py`, `commhunter.py` | Áp dụng Singleton `_get_bot()`, tái sử dụng trong toàn bộ class, bổ sung `close()` gọi `await self._bot.shutdown()` khi dừng ứng dụng |
+| N-08 | Callback Inline Keyboard không kiểm tra `chat_id` và thiếu try/except split | `telegram_bot.py` | Thêm kiểm tra `effective_chat.id == config.chat_id` (cảnh báo + alert nếu sai), bọc `data.split(":", 1)` bằng try/except ValueError tránh crash |
+| N-09 | `human_type` mất định dạng xuống dòng khi gõ comment AI | `human_emulator.py` | Tách dòng theo `\n`, dùng tổ hợp phím `Shift+Enter` để xuống dòng chuẩn xác trong ô soạn thảo Facebook mà không làm gửi bài sớm |
+| N-10 | `_increment_daily_stat` nội suy cột f-string chưa kiểm soát | `dedup_store.py` | Bổ sung whitelist `ALLOWED_STAT_COLUMNS`, từ chối và raise `ValueError` nếu tên cột không nằm trong whitelist |
+| N-11 | `asyncio.get_event_loop()` đã deprecated (Python 3.10+) | `ai_engine.py`, `human_emulator.py`, `browser_manager.py` | Chuyển đổi toàn bộ sang `asyncio.get_running_loop()`, sạch 100% cảnh báo |
+| N-12 | Hằng số giãn cách và ngưỡng an toàn chưa đồng bộ | `constants.py`, `scout_worker.py`, `models.py` | Dùng `SCAN_DELAY_MIN_SEC`/`SCAN_DELAY_MAX_SEC` thay cho hardcode; đồng bộ `DEFAULT_DB_PATH` và `MAX_COMMENTS_PER_DAY` |
+| N-13 | Ràng buộc đồng bộ đơn luồng của SQLite chưa được ghi chú | `dedup_store.py` | Bổ sung docstring kiến trúc cảnh báo rõ ràng về ràng buộc single-thread event loop và định hướng connection pool cho Phase 2 |
+| N-14 | Thiếu `__init__.py` đóng gói package | `commhunter/__init__.py` | Tạo file `__init__.py` chuẩn hóa package và export đầy đủ models, stores, loaders |
 
 ### 12.2 Còn tồn — chuẩn bị cho Phase 2
 
-🎉 **Tất cả các nợ kỹ thuật từ N-01 đến N-14 đã được xử lý triệt để 100%!** Mã nguồn hiện tại không còn bất kỳ nợ kỹ thuật hay cảnh báo deprecation nào.
+**Tất cả các nợ kỹ thuật từ N-01 đến N-14 đã được xử lý triệt để 100%!** Mã nguồn hiện tại không còn bất kỳ nợ kỹ thuật hay cảnh báo deprecation nào.
 
 ### 12.3 Thứ tự đề xuất
 
-1. **Sprint 0 Hardening:** ✅ ĐÃ HOÀN THÀNH — xử lý triệt để N-01 → N-04, 66/66 test assertion pass offline.
-2. **Backlog Hardening đợt 2:** ✅ ĐÃ HOÀN THÀNH — xử lý triệt để N-05 → N-08, nâng test suite lên 84/84 PASS offline.
-3. **Hardening đợt 3 & Pháp lý:** ✅ ĐÃ HOÀN THÀNH — xử lý triệt để N-09 → N-14, tạo file `NOTICE` bản quyền tác giả và file cấu hình `configs/nyatymita.yaml`, nâng test suite lên **104/104 PASS offline**.
+1. **Sprint 0 Hardening:** ĐÃ HOÀN THÀNH — xử lý triệt để N-01 → N-04, 66/66 test assertion pass offline.
+2. **Backlog Hardening đợt 2:** ĐÃ HOÀN THÀNH — xử lý triệt để N-05 → N-08, nâng test suite lên 84/84 PASS offline.
+3. **Hardening đợt 3 & Pháp lý:** ĐÃ HOÀN THÀNH — xử lý triệt để N-09 → N-14, tạo file `NOTICE` bản quyền tác giả và file cấu hình `configs/nyatymita.yaml`, nâng test suite lên **104/104 PASS offline**.
 4. **Sprint 3 (Thực địa):** Chạy đủ TC-01 → TC-09 trên Facebook thật với tài khoản và group của khách Nyatymita.
 5. **Phase 2:** Khởi động xây dựng Web Dashboard (FastAPI Backend + Next.js + PostgreSQL + Celery) theo `docs/plans/phase2_dashboard_detail.md`.
 

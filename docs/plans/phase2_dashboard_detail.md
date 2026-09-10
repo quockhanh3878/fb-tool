@@ -1,4 +1,4 @@
-# 📋 PHASE 2 — WEB DASHBOARD & BACKEND: Chi tiết Triển khai (Tuần 3-6)
+# PHASE 2 — WEB DASHBOARD & BACKEND: Chi tiết Triển khai (Tuần 3-6)
 
 > **Mục tiêu:** Chuyển đổi MVP Script thành nền tảng Web Self-Service, cho phép khách hàng tự đăng ký tài khoản, tự cấu hình chiến dịch, quản lý clone và theo dõi kết quả trên giao diện web mà không cần hỗ trợ kỹ thuật.
 > **Tiền đề:** Phase 1 MVP Script đã chạy ổn định cho khách Nyatymita.

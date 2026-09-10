@@ -253,7 +253,7 @@ class CommHunterApp:
             # 1. Lọc từ khóa — miễn phí, chặn phần lớn rác trước khi tốn token
             passed, reason = keyword_match(post.content_text, flt)
             if not passed:
-                logger.debug(f"⏭  Bỏ qua ({reason}): {post.author_name}")
+                logger.debug(f"Bỏ qua ({reason}): {post.author_name}")
                 self.db.mark_skipped(post, reason)
                 continue
 
@@ -275,7 +275,7 @@ class CommHunterApp:
 
             if score < flt.min_relevance_score:
                 logger.info(
-                    f"⏭  Điểm thấp {score:.2f} < {flt.min_relevance_score}: {post.author_name}"
+                    f"Điểm thấp {score:.2f} < {flt.min_relevance_score}: {post.author_name}"
                 )
                 self.db.mark_skipped(post, f"low_score:{score:.2f} — {post.ai_reason}")
                 continue
@@ -283,7 +283,7 @@ class CommHunterApp:
             # 3. Anti-crowding: chen vào bài đã đông vừa tốn quota vừa vô ích
             if post.existing_comment_count > flt.max_competitor_comments:
                 logger.info(
-                    f"⏭  Quá đông ({post.existing_comment_count} comment > "
+                    f"Quá đông ({post.existing_comment_count} comment > "
                     f"{flt.max_competitor_comments}): {post.author_name}"
                 )
                 self.db.mark_skipped(post, f"too_competitive:{post.existing_comment_count}")
@@ -293,7 +293,7 @@ class CommHunterApp:
             self.db.increment_matched()
             self._ai_cache[post.content_hash] = ai_result
             logger.info(
-                f"🎯 BÀI PHÙ HỢP (điểm {score:.2f}): {post.author_name} — {post.group_name}"
+                f"BÀI PHÙ HỢP (điểm {score:.2f}): {post.author_name} — {post.group_name}"
             )
 
             if self.config.comment.mode == "semi_auto":
@@ -340,21 +340,21 @@ class CommHunterApp:
         limit = self.config.comment.max_comments_per_day
         if used >= limit:
             logger.warning(
-                f"⛔ Đã dùng hết quota hôm nay ({used}/{limit}) — không xếp hàng thêm"
+                f"Đã dùng hết quota hôm nay ({used}/{limit}) — không xếp hàng thêm"
             )
             await self.tg.send_text(
-                f"⛔ Đã đạt trần {limit} comment/ngày. Tạm dừng tới ngày mai."
+                f"Đã đạt trần {limit} comment/ngày. Tạm dừng tới ngày mai."
             )
             return
 
         await self._shoot_queue.put((post, comment))
         logger.info(
-            f"📥 Đã xếp hàng comment (hàng đợi: {self._shoot_queue.qsize()}) — {post.post_url}"
+            f"Đã xếp hàng comment (hàng đợi: {self._shoot_queue.qsize()}) — {post.post_url}"
         )
 
     async def _shooter_consumer(self) -> None:
         """Consumer DUY NHẤT của hàng đợi: đảm bảo mỗi lần chỉ 1 comment chạy."""
-        logger.info("🔫 Shooter consumer sẵn sàng")
+        logger.info("Shooter consumer sẵn sàng")
         while True:
             post, comment = await self._shoot_queue.get()
             try:
@@ -363,23 +363,23 @@ class CommHunterApp:
                     if not self._breaker_tripped:
                         self._breaker_tripped = True
                         logger.error(
-                            f"🚨 Circuit Breaker kích hoạt! Đã thất bại {failures} lượt liên tiếp. "
+                            f"Circuit Breaker kích hoạt! Đã thất bại {failures} lượt liên tiếp. "
                             "Tạm dừng toàn bộ hàng đợi comment để bảo vệ tài khoản. "
                             "Khởi động lại sau khi xử lý tài khoản."
                         )
                         await self.tg.send_text(
-                            f"🚨 <b>CIRCUIT BREAKER KÍCH HOẠT</b>\n\n"
+                            f"<b>CIRCUIT BREAKER KÍCH HOẠT</b>\n\n"
                             f"Đã thất bại {failures} lượt comment liên tiếp.\n"
                             f"Hàng đợi Shooter tự động dừng để bảo vệ tài khoản.\n"
                             f"Vui lòng kiểm tra tài khoản shooter trên Facebook rồi khởi động lại hệ thống."
                         )
-                    logger.warning(f"⛔ Circuit Breaker đang ngắt — huỷ lượt comment: {post.post_url}")
+                    logger.warning(f"Circuit Breaker đang ngắt — huỷ lượt comment: {post.post_url}")
                     continue
 
                 used = self.db.get_today_action_count()
                 limit = self.config.comment.max_comments_per_day
                 if used >= limit:
-                    logger.warning(f"⛔ Quota hết ({used}/{limit}) — huỷ lượt trong hàng đợi")
+                    logger.warning(f"Quota hết ({used}/{limit}) — huỷ lượt trong hàng đợi")
                     continue
 
                 status = await self.shooter.schedule_comment(post, comment, self.db)
@@ -411,7 +411,7 @@ class CommHunterApp:
         post = self.db.get_post_by_hash(post_hash)
         if post is None:
             logger.warning(f"Không tìm thấy bài với hash {post_hash[:8]}")
-            await self.tg.send_text("⚠️ Không tìm thấy bài viết này trong database.")
+            await self.tg.send_text("Không tìm thấy bài viết này trong database.")
             return
         comment = await self._make_comment(post, self._ai_cache.get(post_hash, {}))
         if comment:
@@ -422,18 +422,18 @@ class CommHunterApp:
         if post is None:
             return
         self.db.mark_skipped(post, "user_skipped")
-        logger.info(f"👍 Người dùng bỏ qua bài {post_hash[:8]}")
+        logger.info(f"Người dùng bỏ qua bài {post_hash[:8]}")
 
     async def on_preview(self, post_hash: str) -> None:
         post = self.db.get_post_by_hash(post_hash)
         if post is None:
-            await self.tg.send_text("⚠️ Không tìm thấy bài viết này trong database.")
+            await self.tg.send_text("Không tìm thấy bài viết này trong database.")
             return
         comment = await self._make_comment(post, self._ai_cache.get(post_hash, {}))
         if comment:
-            await self.tg.send_text(f"📋 Bản nháp comment:\n\n{comment}")
+            await self.tg.send_text(f"Bản nháp comment:\n\n{comment}")
         else:
-            await self.tg.send_text("⚠️ Không sinh được comment. Xem log để biết chi tiết.")
+            await self.tg.send_text("Không sinh được comment. Xem log để biết chi tiết.")
 
     # ── Vòng đời ────────────────────────────────────────────────────────
     async def run(self) -> None:
@@ -441,7 +441,7 @@ class CommHunterApp:
         available, desc = stealth_status()
 
         logger.info("=" * 62)
-        logger.info("🎯 CommHunter AI — khởi động")
+        logger.info("CommHunter AI — khởi động")
         logger.info(f"   Chế độ      : {mode}")
         logger.info(f"   Số group    : {len(self.config.groups)}")
         logger.info(f"   Quota/ngày  : {self.config.comment.max_comments_per_day}")
@@ -450,7 +450,7 @@ class CommHunterApp:
 
         if not available:
             logger.warning(
-                "⚠️ Browser sẽ chạy KHÔNG có stealth. Rủi ro bị Facebook phát hiện cao. "
+                "Browser sẽ chạy KHÔNG có stealth. Rủi ro bị Facebook phát hiện cao. "
                 "Chạy `pip install -r requirements.txt` rồi kiểm tra lại bằng lệnh `status`."
             )
 
@@ -462,7 +462,7 @@ class CommHunterApp:
                 on_skip=self.on_skip,
                 on_preview=self.on_preview,
             )
-            await self.tg.send_text("🎯 CommHunter đã khởi động và đang giám sát group.")
+            await self.tg.send_text("CommHunter đã khởi động và đang giám sát group.")
 
         self._tasks = [
             asyncio.create_task(self._shooter_consumer(), name="shooter"),
@@ -479,7 +479,7 @@ class CommHunterApp:
         if self._stopping:
             return
         self._stopping = True
-        logger.info("🛑 Đang dừng...")
+        logger.info("Đang dừng...")
 
         for task in self._tasks:
             task.cancel()
@@ -501,7 +501,7 @@ class CommHunterApp:
         except Exception as e:
             logger.debug(f"Đóng DB: {e}")
 
-        logger.info("👋 Đã dừng sạch.")
+        logger.info("Đã dừng sạch.")
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -510,7 +510,7 @@ class CommHunterApp:
 async def cmd_run(config: AppConfig) -> int:
     problems = find_config_problems(config)
     if problems:
-        logger.error("❌ Cấu hình chưa hợp lệ, không thể chạy:")
+        logger.error("Cấu hình chưa hợp lệ, không thể chạy:")
         for item in problems:
             logger.error(f"   • {item}")
         logger.error("   Chạy `python commhunter.py status --config ...` để xem chi tiết.")
@@ -557,18 +557,18 @@ async def cmd_run(config: AppConfig) -> int:
 async def cmd_login(config: AppConfig, profile: str) -> int:
     account = config.accounts.get(profile)
     if account is None:
-        logger.error(f"❌ Không có `accounts.{profile}` trong file cấu hình")
+        logger.error(f"Không có `accounts.{profile}` trong file cấu hình")
         return 1
 
     browser_mgr = BrowserManager(config)
     try:
-        logger.info(f"🔑 Mở browser để đăng nhập tài khoản '{profile}'")
+        logger.info(f"Mở browser để đăng nhập tài khoản '{profile}'")
         logger.info(f"   Profile: {account.profile_dir}")
         ok = await browser_mgr.login_interactive(account.profile_dir, account.proxy)
         if ok:
-            logger.info(f"✅ Đã lưu session cho '{profile}'")
+            logger.info(f"Đã lưu session cho '{profile}'")
             return 0
-        logger.error(f"❌ Chưa đăng nhập được cho '{profile}' — thử lại")
+        logger.error(f"Chưa đăng nhập được cho '{profile}' — thử lại")
         return 1
     finally:
         await browser_mgr.close_all()
@@ -579,7 +579,7 @@ async def cmd_status(config: AppConfig, config_path: Path, skip_session: bool) -
     healthy = True
 
     lines.append("=" * 62)
-    lines.append("🔎 COMMHUNTER — KIỂM TRA TRẠNG THÁI")
+    lines.append("COMMHUNTER — KIỂM TRA TRẠNG THÁI")
     lines.append("=" * 62)
     lines.append(f"Cấu hình : {config_path}")
     lines.append(f"Chế độ   : {config.comment.mode}")
@@ -597,16 +597,16 @@ async def cmd_status(config: AppConfig, config_path: Path, skip_session: bool) -
     ):
         try:
             __import__(module)
-            lines.append(f"  ✅ {label}")
+            lines.append(f"  [OK] {label}")
         except ImportError:
-            lines.append(f"  ❌ {label} — CHƯA CÀI (pip install -r requirements.txt)")
+            lines.append(f"  [LỖI] {label} — CHƯA CÀI (pip install -r requirements.txt)")
             healthy = False
 
     available, desc = stealth_status()
     if available:
-        lines.append(f"  ✅ stealth: {desc}")
+        lines.append(f"  [OK] stealth: {desc}")
     else:
-        lines.append(f"  ⚠️  stealth: {desc}")
+        lines.append(f"  [CẢNH BÁO] stealth: {desc}")
         lines.append("      → Browser sẽ chạy TRẦN. Rủi ro bị phát hiện CAO.")
         healthy = False
     lines.append("")
@@ -621,15 +621,15 @@ async def cmd_status(config: AppConfig, config_path: Path, skip_session: bool) -
         async with async_playwright() as _pw:
             try:
                 _b = await _pw.chromium.launch(channel=br.channel, headless=True)
-                lines.append(f"  ✅ channel '{br.channel}' mở được — {_b.version}")
+                lines.append(f"  [OK] channel '{br.channel}' mở được — {_b.version}")
                 await _b.close()
             except Exception as e:
                 lines.append(
-                    f"  ⚠️  channel '{br.channel}' KHÔNG mở được ({str(e)[:60]}…) "
+                    f"  [CẢNH BÁO] channel '{br.channel}' KHÔNG mở được ({str(e)[:60]}…) "
                     f"→ sẽ rơi về Chromium bundled"
                 )
     except Exception as e:
-        lines.append(f"  ⚠️  không kiểm tra được channel: {str(e)[:60]}")
+        lines.append(f"  [CẢNH BÁO] không kiểm tra được channel: {str(e)[:60]}")
     for role in ("scout", "shooter"):
         acc = config.accounts.get(role)
         if acc is None:
@@ -656,9 +656,9 @@ async def cmd_status(config: AppConfig, config_path: Path, skip_session: bool) -
     if problems:
         healthy = False
         for item in problems:
-            lines.append(f"  ❌ {item}")
+            lines.append(f"  [LỖI] {item}")
     else:
-        lines.append("  ✅ Không phát hiện lỗi nghiêm trọng")
+        lines.append("  [OK] Không phát hiện lỗi nghiêm trọng")
     lines.append("")
 
     # ── Database ────────────────────────────────────────────────────────
@@ -667,7 +667,7 @@ async def cmd_status(config: AppConfig, config_path: Path, skip_session: bool) -
         db = DedupStore(config.database.path)
         stats = db.get_stats()
         db.close()
-        lines.append(f"  ✅ {config.database.path}")
+        lines.append(f"  [OK] {config.database.path}")
         lines.append(
             f"     Bài mới: {stats.get('new', 0)} | Đã báo: {stats.get('notified', 0)} "
             f"| Đã comment: {stats.get('commented', 0)} | Bỏ qua: {stats.get('skipped', 0)}"
@@ -682,27 +682,27 @@ async def cmd_status(config: AppConfig, config_path: Path, skip_session: bool) -
             f"| Thất bại liên tiếp: {stats.get('consecutive_failures', 0)}"
         )
     except Exception as e:
-        lines.append(f"  ❌ Không mở được DB: {e}")
+        lines.append(f"  [LỖI] Không mở được DB: {e}")
         healthy = False
     lines.append("")
 
     # ── Session Facebook ────────────────────────────────────────────────
     lines.append("── Session Facebook ──")
     if skip_session:
-        lines.append("  ⏭  Bỏ qua (--skip-session)")
+        lines.append("  [BỎ QUA] kiểm tra session (--skip-session)")
     else:
         browser_mgr = BrowserManager(config)
         try:
             for role in ("scout", "shooter"):
                 account = config.accounts.get(role)
                 if account is None:
-                    lines.append(f"  ❌ {role}: chưa cấu hình")
+                    lines.append(f"  [LỖI] {role}: chưa cấu hình")
                     healthy = False
                     continue
                 cdp = _account_cdp(account) or (config.browser.attach_cdp or "")
                 if not cdp and not Path(account.profile_dir).exists():
                     lines.append(
-                        f"  ⚠️  {role}: chưa đăng nhập lần nào "
+                        f"  [CẢNH BÁO] {role}: chưa đăng nhập lần nào "
                         f"→ python commhunter.py login --profile {role} --config ..."
                     )
                     healthy = False
@@ -711,10 +711,10 @@ async def cmd_status(config: AppConfig, config_path: Path, skip_session: bool) -
                     account.profile_dir, cdp_endpoint=cdp or None
                 )
                 if alive:
-                    lines.append(f"  ✅ {role}: session còn sống")
+                    lines.append(f"  [OK] {role}: session còn sống")
                 else:
                     lines.append(
-                        f"  ❌ {role}: session hỏng/checkpoint "
+                        f"  [LỖI] {role}: session hỏng/checkpoint "
                         f"→ python commhunter.py login --profile {role} --config ..."
                     )
                     healthy = False
@@ -723,7 +723,7 @@ async def cmd_status(config: AppConfig, config_path: Path, skip_session: bool) -
 
     lines.append("")
     lines.append("=" * 62)
-    lines.append("✅ SẴN SÀNG CHẠY" if healthy else "❌ CHƯA SẴN SÀNG — xử lý các mục ❌ ở trên")
+    lines.append("[OK] SẴN SÀNG CHẠY" if healthy else "[LỖI] CHƯA SẴN SÀNG — xử lý các mục [LỖI] ở trên")
     lines.append("=" * 62)
 
     print("\n".join(lines))
@@ -791,7 +791,7 @@ def main(argv=None) -> int:
 
     config_path = Path(args.config).expanduser().resolve()
     if not config_path.exists():
-        logger.error(f"❌ Không tìm thấy file cấu hình: {config_path}")
+        logger.error(f"Không tìm thấy file cấu hình: {config_path}")
         return 1
 
     # Đường dẫn trong file YAML (data/..., configs/...) là tương đối so với
@@ -801,7 +801,7 @@ def main(argv=None) -> int:
     try:
         config = load_config(str(config_path))
     except Exception as e:
-        logger.error(f"❌ Không đọc được cấu hình: {e}")
+        logger.error(f"Không đọc được cấu hình: {e}")
         return 1
 
     try:
@@ -811,7 +811,7 @@ def main(argv=None) -> int:
             return asyncio.run(cmd_status(config, config_path, args.skip_session))
         return asyncio.run(cmd_run(config))
     except KeyboardInterrupt:
-        logger.info("👋 Đã dừng theo yêu cầu (Ctrl+C)")
+        logger.info("Đã dừng theo yêu cầu (Ctrl+C)")
         return 0
 
 
