@@ -29,7 +29,7 @@ Chỉ việc thật sự lớn (feature nhiều file, audit sâu) mới mở tr�
 - **Mã nguồn chạy thật** chỉ nằm ở 3 nơi: `commhunter/` (CLI MVP Phase 1, Python) · `backend/` (FastAPI SaaS đa khách, Python) · `frontend/` (Next.js dashboard, TypeScript).
 - **`ai-comment-bot-main/`, `fbn-main/`, `openclaw-skills-main/` là kho THAM KHẢO, chỉ đọc.** Không sửa, không import trực tiếp, không đưa vào đường chạy thật. Cần kỹ thuật gì thì **chép có chọn lọc + ghi nguồn** vào module của mình, và bổ sung `NOTICE` nếu là mã có license.
 - **`chrome-debug-profile/`** là profile Chrome dùng để test tay qua CDP — dữ liệu runtime, không phải mã nguồn. Không đọc, không in nội dung, không commit (§7).
-- **Repo này chưa phải git repo** (không có `.git`). Vì vậy: không được viện dẫn `git status`/`git diff` làm bằng chứng, không tự chạy `git init`/`git commit` khi chưa được yêu cầu. Muốn có mốc phục hồi thì đề xuất `git init` cho anh Ber quyết.
+- **Repo có git** (khởi tạo 10/09/2026, nhánh `main`, chưa có remote). Quy tắc dùng git ở §14 — đọc trước khi commit lần đầu.
 - **Python 3.11 + `pip`**, chạy trên **Windows / PowerShell**. Frontend dùng **`npm`** (có `package-lock.json`) — không đổi sang pnpm/yarn.
 - Backend và `commhunter/` là hai runtime **riêng biệt**, mỗi bên một `requirements.txt`. Không tạo import chéo `backend/app` ↔ `commhunter/`; logic dùng chung thì chép sang kèm test riêng, hoặc nêu đề xuất tách package trước khi làm.
 
@@ -91,7 +91,7 @@ Ngoại lệ được bỏ qua hoàn toàn: sửa hiển nhiên 1–3 dòng · a
 1. Trước khi tạo module / route / worker mới: xác định nó thuộc task nào trong `docs/plans/phaseN_*.md`. Không có task tương ứng → viết vào plan một mục ngắn trước, rồi mới code.
 2. File mới mang comment dòng đầu trỏ về plan: `# plan: docs/plans/phase2_dashboard_detail.md` (Python) hoặc `// plan: ...` (TS). Migration Alembic: `# plan: ...` ngay dưới docstring.
 3. **Sau khi hiện thực**: cập nhật `docs/plans/DELIVERY_STATUS.md` trong **cùng một diff** — bảng trạng thái, số assertion test, và mục "còn chặn bởi gì".
-4. **Quy tắc vàng của `DELIVERY_STATUS.md`: chỉ đánh khi có mã chạy được VÀ có test chứng minh.** Có tài liệu mô tả không tính là xong. Không được sửa trạng thái thành để bảng đẹp hơn.
+4. **Quy tắc vàng của `DELIVERY_STATUS.md`: chỉ ghi trạng thái `Xong` khi có mã chạy được VÀ có test chứng minh.** Có tài liệu mô tả không tính là xong. Không được sửa trạng thái thành `Xong` để bảng đẹp hơn. Ba mức trạng thái dùng trong bảng: `Xong` · `Chờ` (chặn bởi yếu tố ngoài) · `Chưa làm`.
 5. Đổi hành vi mà `README.md` mô tả (lệnh CLI, cổng, biến môi trường, số test) → sửa `README.md` cùng diff. README lệch thực tế bị coi là bug.
 
 ---
@@ -197,7 +197,7 @@ Anh Ber không có nền tảng lập trình — memory là thứ **duy nhất**
 
 **Snapshot là nhật ký làm việc, KHÔNG phải báo cáo hoàn thành.** Agent hay báo xong sai; thứ có giá trị là *vì sao quyết định như vậy, đang vướng gì, bước nhỏ tiếp theo là gì*.
 
-- **Khi đọc**: đừng tin trạng thái ghi trong đó (kể cả "DONE") — repo chưa có git để đối chiếu, nên phải xác minh bằng cách chạy test hoặc đọc code nếu điều đó quan trọng.
+- **Khi đọc**: đừng tin trạng thái ghi trong đó (kể cả "Xong") — đối chiếu bằng `git log` / `git status` / chạy test nếu điều đó quan trọng.
 - **Khi ghi**: bỏ trạng thái hoàn thành trừ khi việc thật sự kết thúc. Phân vân thì để mở ("Đang làm" / "Chặn bởi X"). Mọi snapshot phải có "bước nhỏ tiếp theo" — thiếu là vô dụng.
 - **Snapshot cũ thì thực tế thắng**: code/test nói chưa xong thì snapshot sai — sửa snapshot cho khớp thực tế rồi ghi quyết định mới. Không làm vòng qua một snapshot lỗi thời như thể nó là chân lý.
 
@@ -207,7 +207,10 @@ Anh Ber không có nền tảng lập trình — memory là thứ **duy nhất**
 
 - Ngắn gọn, thẳng, dựa trên bằng chứng.
 - **Xưng hô**: luôn gọi user là **anh Ber**. Không dùng "bạn" hay "user". Giọng ngắn gọn, chuyên nghiệp.
-- **Emoji / Icon**: không dùng emoji trong code, comment, commit message, và tài liệu mới. Ngoại lệ duy nhất: `README.md` và `docs/` hiện tại đã dùng emoji làm nhãn mục — khi sửa các file đó thì **giữ nguyên style sẵn có**, đừng vừa sửa vừa lan emoji sang chỗ khác.
+- **Emoji / Icon — CẤM TUYỆT ĐỐI.** Không dùng emoji ở bất kỳ đâu: câu trả lời cho anh Ber, code, comment, docstring, log, bản in ra terminal, tên biến, tài liệu markdown, commit message, tên nhánh. Repo đã được quét sạch ngày 10/09/2026; đừng đưa trở lại.
+  - **Ngoại lệ duy nhất: giao diện người dùng thật** — thẻ thông báo Telegram (`commhunter/telegram_bot.py`, `backend/app/services/notification_service.py`, `backend/app/routers/telegram_webhook.py`) và dashboard Next.js (`frontend/`). Đó là thiết kế giao diện sản phẩm, giữ nguyên. Khối mẫu trong `docs/` mô tả chính thẻ Telegram cũng giữ, để tài liệu không lệch code.
+  - **Cần đánh dấu trạng thái thì dùng chữ, không dùng glyph**: bảng tài liệu ghi `Xong` / `Chờ` / `Chưa làm`; bản in terminal ghi `[OK]` / `[LỖI]` / `[CẢNH BÁO]` / `[BỎ QUA]`; mức độ nghiêm trọng ghi `nặng` / `vừa` / `nhẹ`. Xoá glyph mà không thay bằng chữ là **làm mất thông tin** — cấm.
+  - Lý do không chỉ là thẩm mỹ: console Windows chạy codepage cp1252 **ném `UnicodeEncodeError`** khi in emoji, nên emoji trong log/CLI là bug chờ nổ.
 - **Yêu cầu việc gì thì làm đúng việc đó.** Nhiệm vụ chỉ là khảo sát/đánh giá/báo cáo thì dừng ở tài liệu và kết quả, không tự ý sửa mã hay đề xuất kế hoạch sửa.
 - **Không bao giờ đoán.** Tìm dữ liệu thật (code, memory, tài liệu, log) thay vì suy diễn. Không có dữ liệu thì nói thẳng là không có.
 - Tự quyết các lựa chọn nhỏ (style, cách đặt tên, chọn hiển nhiên theo ngữ cảnh). Tiện tay sửa bất nhất nhỏ trong chính module đang đụng. Thêm/chỉnh test tối thiểu khi hợp lý.
@@ -271,6 +274,40 @@ Khi tạo hoặc sửa file markdown:
 3. **Không để tài liệu lệch code**: hành vi đổi thì sửa tài liệu chuẩn tương ứng trong cùng tác vụ (§4 mục 3 và 5).
 4. Tiếng Việt là ngôn ngữ mặc định của tài liệu trong repo này; thuật ngữ kỹ thuật giữ nguyên tiếng Anh. Luôn ghi UTF-8 (§5).
 5. Không tạo tài liệu tổng kết/báo cáo mới nếu anh Ber không yêu cầu — cập nhật file đã có thay vì đẻ file mới.
+
+---
+
+## 14) Git
+
+Repo khởi tạo ngày 10/09/2026, nhánh `main`, **chưa có remote** — mọi thứ nằm trên máy anh Ber. Git ở đây là **mốc phục hồi**, không phải quy trình cộng tác.
+
+**Trước khi commit — bắt buộc kiểm bí mật.** Repo này chứa cookie Facebook và API key của khách; một lần commit nhầm là lộ tài khoản, và git giữ lại mãi kể cả sau khi xoá file.
+
+```bash
+git status --short                 # nhìn bằng mắt cái gì sắp vào
+git diff --cached --name-only      # danh sách file thật sự sẽ commit
+git check-ignore -v <đường-dẫn>    # kiểm một file có đang bị chặn không
+```
+
+Bốn thứ **không bao giờ** được lọt vào git (đã chặn trong `.gitignore` — không bao giờ gỡ, không bao giờ `git add -f` chúng): `.env` · `commhunter/configs/*.yaml` (trừ `example.yaml`) · `commhunter/data/` · `chrome-debug-profile/`. Nếu phát hiện một trong số đó đã bị commit: dừng lại, báo anh Ber ngay, **không** tự viết lại lịch sử — coi như secret đã lộ và phải đổi key/cookie.
+
+**Quy tắc làm việc:**
+
+- **Chỉ commit khi anh Ber yêu cầu.** Làm xong việc thì báo cáo và để anh Ber quyết, đừng tự commit.
+- **Không bao giờ tự `git push`, `git reset --hard`, `git rebase`, `git checkout -- .`, hay `git clean`** khi chưa được yêu cầu rõ — chúng xoá công sức không hoàn tác được. Cần bỏ thay đổi thì hỏi trước.
+- **Không `git add -A` khi chưa nhìn `git status`.** Việc lớn thì `git add` từng đường dẫn.
+- Việc thử nghiệm có rủi ro (đổi kiến trúc, sửa hàng loạt): commit mốc sạch **trước** khi bắt đầu, để còn đường lùi.
+- Không dùng `--no-verify`, không bỏ qua hook.
+
+**Commit message** — tiếng Việt, dòng đầu ≤72 ký tự, dạng `<loại>: <việc đã làm>`:
+
+`feat` tính năng mới · `fix` sửa lỗi · `refactor` sửa cấu trúc không đổi hành vi · `test` thêm/sửa test · `docs` tài liệu · `chore` hạ tầng, cấu hình, dọn dẹp · `style` định dạng, không đổi hành vi.
+
+Thân message nói **vì sao**, không kể lại diff. Có kiểm chứng thì ghi số thật (`pipeline 104/104, backend 243/243`). Kết bằng dòng:
+
+```
+Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
+```
 
 ---
 

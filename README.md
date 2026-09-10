@@ -190,7 +190,9 @@ Chi tiết thiết kế: [DELIVERY_STATUS §4b](docs/plans/DELIVERY_STATUS.md).
 | Bộ test | Phạm vi | Kết quả |
 |---|---|---|
 | `commhunter/tests/test_pipeline.py` | Phase 1: pipeline CLI, anti-ban, hồi quy nợ kỹ thuật | **104/104 PASS** |
-| `backend/tests/test_api.py` | Phase 2-4: 51 path / 65 operation, cách ly đa khách, quota, máy trạng thái, worker, xoay vòng & chống trùng | **165/165 PASS** |
+| `backend/tests/test_api.py` | Phase 2-4: 51 path / 65 operation, cách ly đa khách, quota, máy trạng thái, worker, xoay vòng & chống trùng | **243/243 PASS** |
+| `commhunter/tests/test_templates.py` | Kho mẫu comment, chống lặp lời | **8/8 PASS** |
+| `commhunter/tests/test_browser.py` | Vân tay + cấu hình trình duyệt | **23/23 PASS** |
 | `npx next build` (frontend) | 13 route, TypeScript strict | **0 lỗi** |
 
 Cả hai bộ test chạy **hoàn toàn offline** — không cần Facebook, OpenAI, Docker hay mạng.

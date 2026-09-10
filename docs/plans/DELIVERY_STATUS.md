@@ -3,7 +3,8 @@
 > Cập nhật: 08/09/2026. Tài liệu này đối chiếu **từng task trong 4 plan** với mã nguồn
 > đã thực sự tồn tại trong repo, và nói rõ **cái gì chưa làm được và vì sao**.
 >
-> Nguyên tắc: chỉ đánh khi có mã nguồn chạy được **và** có test chứng minh.
+> Nguyên tắc: chỉ ghi **Xong** khi có mã nguồn chạy được **và** có test chứng minh.
+> Ba mức trạng thái: **Xong** · **Chờ** (chặn bởi yếu tố ngoài) · **Chưa làm**.
 > Việc chỉ có tài liệu mô tả không được tính là hoàn thành.
 
 ---
@@ -13,7 +14,7 @@
 | Phase | Task theo plan | Đã có mã + test | Chặn bởi yếu tố ngoài | Ghi chú |
 |---|---|---|---|---|
 | **Phase 1 — MVP Script** | 11 | 10 | 1 (Sprint 3: chạy thật) | 104/104 assertion PASS |
-| **Phase 2 — Dashboard** | 17 | 16 | 1 (deploy VPS + SSL) | 165/165 assertion PASS |
+| **Phase 2 — Dashboard** | 17 | 16 | 1 (deploy VPS + SSL) | 243/243 assertion PASS |
 | **Phase 3 — Anti-Ban** | 6 | 6 | — (ngưỡng cần hiệu chỉnh thật) | Logic thuần, test offline |
 | **Phase 4 — Thương mại** | 7 | 3 | 4 (cổng thanh toán, marketing) | Xem §5 |
 
@@ -21,7 +22,7 @@
 
 ```
 commhunter/tests/test_pipeline.py   →  104 PASS / 0 FAIL
-backend/tests/test_api.py           →  165 PASS / 0 FAIL
+backend/tests/test_api.py           →  243 PASS / 0 FAIL
 frontend: npx tsc --noEmit          →    0 lỗi
 frontend: npx next build            →    0 lỗi TypeScript, 13 route
 API surface (openapi.json)          →   51 path / 65 operation
