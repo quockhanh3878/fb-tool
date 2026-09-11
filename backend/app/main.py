@@ -36,6 +36,7 @@ async def lifespan(app: FastAPI):
     if settings.run_mode == "desktop":
         from app.services.app_settings_service import apply_to_runtime_settings
         from app.workers.scheduler import start_scheduler, stop_scheduler
+        from app.workers.telegram_poller import telegram_poller
 
         # Nạp cấu hình DB (OpenAI key, Telegram token, khoá mã hoá cookie bền)
         # vào Settings singleton TRƯỚC khi bật scheduler / nhận request đầu tiên.
@@ -43,10 +44,13 @@ async def lifespan(app: FastAPI):
             await apply_to_runtime_settings(db)
 
         start_scheduler()
+        # Máy local không có URL public cho webhook -> nhận nút bấm qua long-polling.
+        telegram_poller.start()
 
     yield
 
     if settings.run_mode == "desktop":
+        await telegram_poller.stop()
         await stop_scheduler()
 
     await dispose_engine()

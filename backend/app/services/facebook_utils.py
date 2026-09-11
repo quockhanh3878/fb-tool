@@ -159,9 +159,29 @@ def _parse_json_cookies(text: str) -> list[dict]:
     except json.JSONDecodeError as exc:
         raise InvalidCookieFile(f"JSON không hợp lệ: {exc}") from exc
 
-    # Hỗ trợ cả {"cookies": [...]} lẫn mảng phẳng [...]
+    # Hỗ trợ:
+    # 1. {"cookies": [...]}
+    # 2. Mảng phẳng [...] (J2TEAM Cookies, Cookie-Editor, extension chuẩn)
+    # 3. Object mapping {name: value} hoặc {name: {value: ...}}
     if isinstance(data, dict):
-        data = data.get("cookies", [])
+        if "cookies" in data and isinstance(data["cookies"], list):
+            data = data["cookies"]
+        elif not any(k in ("name", "value") for k in data.keys()):
+            # Chuyển object key-value { "c_user": "...", "xs": "..." } thành mảng chuẩn
+            flattened = []
+            for k, v in data.items():
+                if isinstance(v, dict):
+                    cookie_dict = dict(v)
+                    cookie_dict.setdefault("name", k)
+                    cookie_dict.setdefault("domain", ".facebook.com")
+                    flattened.append(cookie_dict)
+                elif isinstance(v, (str, int, float)):
+                    flattened.append({
+                        "name": k,
+                        "value": str(v),
+                        "domain": ".facebook.com",
+                    })
+            data = flattened
     if not isinstance(data, list):
         raise InvalidCookieFile("JSON cookie phải là mảng hoặc có khoá 'cookies'")
 
@@ -182,6 +202,7 @@ def _parse_json_cookies(text: str) -> list[dict]:
         if cookie:
             out.append(cookie)
     return out
+
 
 
 def _parse_netscape_cookies(text: str) -> list[dict]:

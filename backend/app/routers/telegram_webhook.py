@@ -1,5 +1,8 @@
 """
-Webhook Telegram — thay cho polling của Phase 1.
+Webhook Telegram — thay cho polling của Phase 1 (chế độ SaaS).
+
+Chế độ desktop không có URL public để nhận webhook nên dùng long-polling
+(workers/telegram_poller.py), gọi lại đúng `handle_update` bên dưới.
 
 Bảo mật: Telegram gửi kèm header `X-Telegram-Bot-Api-Secret-Token`; nếu
 TELEGRAM_WEBHOOK_SECRET được đặt mà header sai thì từ chối. Nếu không có
@@ -105,21 +108,14 @@ async def _handle_callback(db: AsyncSession, chat_id: str, data: str) -> str:
     return "⚠️ Nút bấm không được hỗ trợ."
 
 
-@router.post("/telegram")
-async def telegram_webhook(
-    request: Request,
-    db: AsyncSession = Depends(get_db),
-    x_telegram_bot_api_secret_token: str | None = Header(default=None),
-):
-    settings = get_settings()
-    if settings.telegram_webhook_secret and (
-        x_telegram_bot_api_secret_token != settings.telegram_webhook_secret
-    ):
-        raise HTTPException(status_code=403, detail="Secret token không hợp lệ")
+async def handle_update(
+    db: AsyncSession, update: dict, notifier: NotificationService
+) -> str:
+    """Xử lý 1 Update Telegram, trả nhãn đã xử lý.
 
-    update = await request.json()
-    notifier = NotificationService()
-
+    Dùng chung cho webhook (SaaS) và long-polling (desktop,
+    workers/telegram_poller.py) để hai đường không lệch hành vi.
+    """
     callback = update.get("callback_query")
     if callback:
         chat_id = str(
@@ -127,7 +123,7 @@ async def telegram_webhook(
         )
         reply = await _handle_callback(db, chat_id, callback.get("data") or "")
         await notifier.send_text(chat_id, reply)
-        return {"ok": True, "handled": "callback_query"}
+        return "callback_query"
 
     message = update.get("message") or {}
     chat_id = str((message.get("chat") or {}).get("id", ""))
@@ -135,7 +131,7 @@ async def telegram_webhook(
 
     if text.startswith("/start"):
         await notifier.send_text(chat_id, await _handle_start(db, chat_id, text))
-        return {"ok": True, "handled": "start"}
+        return "start"
 
     if text.startswith("/status"):
         user = await _user_by_chat(db, chat_id)
@@ -152,6 +148,23 @@ async def telegram_webhook(
                 f"📊 Tài khoản {user.email}\n"
                 f"Chiến dịch: {len(rows)} (đang chạy: {active})",
             )
-        return {"ok": True, "handled": "status"}
+        return "status"
 
-    return {"ok": True, "handled": "ignored"}
+    return "ignored"
+
+
+@router.post("/telegram")
+async def telegram_webhook(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    x_telegram_bot_api_secret_token: str | None = Header(default=None),
+):
+    settings = get_settings()
+    if settings.telegram_webhook_secret and (
+        x_telegram_bot_api_secret_token != settings.telegram_webhook_secret
+    ):
+        raise HTTPException(status_code=403, detail="Secret token không hợp lệ")
+
+    update = await request.json()
+    handled = await handle_update(db, update, NotificationService())
+    return {"ok": True, "handled": handled}

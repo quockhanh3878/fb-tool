@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { ThemeToggle } from "@/components/ThemeToggle";
 import {
@@ -19,13 +19,18 @@ import { useAuth } from "@/lib/auth";
 
 export default function LoginPage() {
   const router = useRouter();
-  const { refreshUser } = useAuth();
+  const { user, loading, isDesktop, refreshUser } = useAuth();
   const toast = useToast();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+
+  // Chế độ desktop không có mật khẩu: lỡ vào /login (bookmark cũ) thì đưa thẳng vào dashboard.
+  useEffect(() => {
+    if (!loading && isDesktop && user) router.replace("/dashboard");
+  }, [loading, isDesktop, user, router]);
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();

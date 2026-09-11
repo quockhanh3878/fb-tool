@@ -1641,6 +1641,178 @@ async def run_api_tests(client: httpx.AsyncClient) -> None:
     for cid_item in (scout_id, shooter_id, poster_id, all_id):
         await client.delete(f"/api/clones/{cid_item}", headers=auth)
 
+    section("14i. Gian cach giua 2 comment cua mot nick (shooter_task)")
+    from app.models.base import as_utc as _as_utc
+    from app.models.post import CommentAction as _CommentAction, DiscoveredPost as _DiscoveredPost
+    from app.workers import shooter_task as _shooter_task
+    from app.workers.browser_runtime import BrowserRuntimeUnavailable as _BRU
+
+    # User rieng de _pick_shooter khong vo phai clone cua cac muc khac.
+    resp = await client.post(
+        "/api/auth/register",
+        json={"email": "giancach@test.vn", "password": "matkhau123", "display_name": "Gian cach"},
+    )
+    gc_auth = {"Authorization": f"Bearer {resp.json()['access_token']}"}
+    resp = await client.post(
+        "/api/clones", headers=gc_auth, json={"display_name": "Shooter 14i", "role": "shooter"}
+    )
+    gc_clone_id = resp.json()["id"]
+    resp = await client.post(
+        "/api/campaigns", headers=gc_auth,
+        json={"name": "Camp 14i", "service_name": "X", "ai_filter_prompt": "x"},
+    )
+    gc_cid = resp.json()["id"]
+
+    async with _gsf()() as _db:
+        _gc_clone = await _db.get(_CloneAccount, gc_clone_id)
+        _gc_clone.status = "active"
+        gc_action_ids = []
+        for _i in range(3):
+            _post = _DiscoveredPost(
+                campaign_id=gc_cid, content_hash=f"giancach-14i-{_i}",
+                post_url=f"https://facebook.com/groups/g/posts/{_i}", author_name="A",
+                content_text="tim nguoi viet", status="notified",
+            )
+            _db.add(_post)
+            await _db.flush()
+            _act = _CommentAction(
+                discovered_post_id=_post.id, comment_content=f"Chao ban so {_i}",
+                status="queued", scheduled_at=datetime.now(timezone.utc),
+            )
+            _db.add(_act)
+            await _db.flush()
+            gc_action_ids.append(_act.id)
+        await _db.commit()
+
+    _gc_calls: list[str] = []
+
+    async def _fake_comment(clone, post_url, comment_text, cookies=None):
+        _gc_calls.append(post_url)
+        return "success"
+
+    async def _read_clone():
+        async with _gsf()() as _db:
+            return await _db.get(_CloneAccount, gc_clone_id)
+
+    _orig_comment = _shooter_task.post_comment_real
+    _shooter_task.post_comment_real = _fake_comment
+    try:
+        t0 = datetime.now(timezone.utc)
+        out1 = await _shooter_task._execute(gc_action_ids[0])
+        gc1 = await _read_clone()
+        out2 = await _shooter_task._execute(gc_action_ids[1])
+        async with _gsf()() as _db:
+            act2_status = (await _db.get(_CommentAction, gc_action_ids[1])).status
+
+        check("Comment 1 bang nick moi -> success", out1.get("status") == "success", str(out1))
+        _gap = (_as_utc(gc1.next_comment_at) - t0).total_seconds() if gc1.next_comment_at else -1
+        check("Sau comment 1: next_comment_at cach it nhat 5 phut (min chien dich)",
+              _gap >= 299, str(_gap))
+        check("Comment 2 ngay sau do -> KHONG ban (chua het gian cach)",
+              out2.get("skipped") == "no_available_shooter_clone", str(out2))
+        check("Comment 2 van nam trong hang doi, khong mat viec", act2_status == "queued", act2_status)
+        check("Chi goi Facebook dung 1 lan", len(_gc_calls) == 1, str(_gc_calls))
+
+        # Het gian cach -> comment 2 duoc ban.
+        async with _gsf()() as _db:
+            (await _db.get(_CloneAccount, gc_clone_id)).next_comment_at = t0 - timedelta(seconds=1)
+            await _db.commit()
+        out2b = await _shooter_task._execute(gc_action_ids[1])
+        check("Het gian cach -> comment 2 duoc ban", out2b.get("status") == "success", str(out2b))
+
+        # Browser khong san sang: chua cham Facebook -> tra lai lich gian cach cu.
+        async with _gsf()() as _db:
+            (await _db.get(_CloneAccount, gc_clone_id)).next_comment_at = t0 - timedelta(seconds=1)
+            await _db.commit()
+
+        async def _fake_unavailable(clone, post_url, comment_text, cookies=None):
+            raise _BRU("browser chua san sang")
+
+        _shooter_task.post_comment_real = _fake_unavailable
+        await _shooter_task._execute(gc_action_ids[2])
+        gc3 = await _read_clone()
+        check("Browser khong san sang -> khong giu cho gian cach (nick van ban duoc)",
+              _as_utc(gc3.next_comment_at) <= datetime.now(timezone.utc), str(gc3.next_comment_at))
+    finally:
+        _shooter_task.post_comment_real = _orig_comment
+
+    section("14j. Che do desktop - Telegram long-polling (khong can webhook)")
+    from app.workers import telegram_poller as _tg_poller
+
+    resp = await client.post("/api/auth/connect-telegram", headers=gc_auth)
+    gc_link_code = resp.json()["link_code"]
+
+    class _FakeTelegram:
+        def __init__(self, result: dict | None) -> None:
+            self.result = result
+            self.offsets: list[int] = []
+            self.sent: list[tuple[str, str]] = []
+
+        async def get_updates(self, offset: int, timeout: int) -> dict | None:
+            self.offsets.append(offset)
+            return self.result
+
+        async def send_text(self, chat_id: str, text: str, markdown: bool = False) -> dict:
+            self.sent.append((chat_id, text))
+            return {"ok": True}
+
+    _fake_tg = _FakeTelegram({
+        "ok": True,
+        "result": [
+            {"update_id": 700, "message": {"chat": {"id": 424242}, "text": f"/start {gc_link_code}"}},
+            {"update_id": 701, "message": {"chat": {"id": 424242}, "text": "/status"}},
+        ],
+    })
+    next_offset, poll_ok = await _tg_poller.poll_once(0, _fake_tg)
+    me = (await client.get("/api/auth/me", headers=gc_auth)).json()
+    check("Polling: /start <ma> qua getUpdates lien ket duoc chat_id",
+          me.get("telegram_chat_id") == "424242", str(me.get("telegram_chat_id")))
+    check("Polling: offset nhich qua update cuoi (701 + 1)", next_offset == 702, str(next_offset))
+    check("Polling: tra loi ca 2 update qua Telegram", len(_fake_tg.sent) == 2 and poll_ok is True,
+          str(_fake_tg.sent))
+
+    _fake_bad = _FakeTelegram({"ok": False, "status": 409, "body": "Conflict: webhook is active"})
+    kept_offset, bad_ok = await _tg_poller.poll_once(702, _fake_bad)
+    check("Polling: Telegram tu choi (409) -> giu offset, bao loi de lui lai",
+          kept_offset == 702 and bad_ok is False, f"{kept_offset} / {bad_ok}")
+
+    _fake_broken = _FakeTelegram({
+        "ok": True,
+        "result": [
+            {"update_id": 800, "message": {"chat": {"id": 424242}, "text": "/status"}},
+            {"update_id": 801, "message": {"chat": {"id": 424242}, "text": "/status"}},
+        ],
+    })
+    _orig_handle = _tg_poller.handle_update
+
+    async def _handle_boom_first(db, update, notifier):
+        if update.get("update_id") == 800:
+            raise RuntimeError("handler hong")
+        return await _orig_handle(db, update, notifier)
+
+    _tg_poller.handle_update = _handle_boom_first
+    try:
+        after_broken, _ = await _tg_poller.poll_once(702, _fake_broken)
+    finally:
+        _tg_poller.handle_update = _orig_handle
+    check("Polling: update lam handler loi khong chan update sau, offset van nhich",
+          after_broken == 802 and len(_fake_broken.sent) == 1, f"{after_broken} / {_fake_broken.sent}")
+
+    # Ep token rong: test offline tuyet doi khong duoc goi Telegram that.
+    from app.config import get_settings as _tg_get_settings
+
+    _tg_settings = _tg_get_settings()
+    _saved_token = _tg_settings.telegram_bot_token
+    _tg_settings.telegram_bot_token = ""
+    try:
+        _poller = _tg_poller.TelegramPoller()
+        _poller.start()
+        await asyncio.sleep(0.05)
+        await _poller.stop()
+    finally:
+        _tg_settings.telegram_bot_token = _saved_token
+    check("TelegramPoller: start/stop sach khi chua co token", _poller._task is None)
+
     section("14g. Che do desktop - SerialJobQueue tuan tu")
     from app.workers.job_queue import SerialJobQueue
 
@@ -1834,6 +2006,18 @@ def run_unit_tests() -> None:
     check("Ti le thanh cong thap -> delay kich tran", slow >= 1440)
     check("Delay luon trong [180, 1800]", all(180 <= compute_delay(r) <= 1800 for r in (0.0, 0.5, 0.85, 1.0)))
 
+    from app.services.anti_ban import comment_gap_seconds
+
+    gaps = [comment_gap_seconds(0.85, 300, 900, random.Random(s)) for s in range(300)]
+    check("Gian cach comment: khong bao gio duoi min chien dich (5 phut)", min(gaps) >= 300, str(min(gaps)))
+    check("Gian cach comment: suc khoe tot thi khong vuot max x1.2", max(gaps) <= 1080, str(max(gaps)))
+    check("Gian cach comment: trai rong ca khoang, khong dinh 1 gia tri", max(gaps) - min(gaps) >= 300,
+          f"{min(gaps)}..{max(gaps)}")
+    check("Gian cach comment: min chien dich 30s van bi san cung 180s",
+          all(comment_gap_seconds(r, 30, 60, random.Random(s)) >= 180 for r in (0.99, 0.85) for s in range(50)))
+    check("Gian cach comment: ti le thanh cong thap -> kich tran",
+          comment_gap_seconds(0.10, 300, 900, random.Random(3)) >= 1440)
+
     check(
         "Shadowban: comment hien thi tren trang",
         is_visible_in_page("truoc do  Chao ban minh nhan viet   nhe sau do", "Chao ban minh nhan viet nhe"),
@@ -1953,6 +2137,9 @@ def run_unit_tests() -> None:
     )
     check("Han dung ghi bang mili-giay van doc dung", ms[0]["expires"] == float(future))
     check("Cookie phien (khong han) duoc danh dau -1", ms[1]["expires"] == -1)
+
+    j2team_dict = _parse('{"c_user": "100099", "xs": "secret_xs_token"}')
+    check("Doc duoc cookie format key-value dict (J2TEAM/custom)", len(j2team_dict) == 2 and {c["name"] for c in j2team_dict} == {"c_user", "xs"})
 
     netscape = _parse(
         "# Netscape HTTP Cookie File\n"
@@ -2094,6 +2281,11 @@ def run_unit_tests() -> None:
     clone.cooldown_until = now + timedelta(hours=2)
     check("Clone dang cooldown -> khong ban", clone_can_shoot(clone, now) is False)
     clone.cooldown_until = None
+    clone.next_comment_at = now + timedelta(minutes=5)
+    check("Clone chua het gian cach comment -> khong ban", clone_can_shoot(clone, now) is False)
+    clone.next_comment_at = now - timedelta(seconds=1)
+    check("Clone da het gian cach comment -> ban duoc", clone_can_shoot(clone, now) is True)
+    clone.next_comment_at = None
     clone.status = "checkpoint"
     check("Clone checkpoint -> khong ban", clone_can_shoot(clone, now) is False)
 

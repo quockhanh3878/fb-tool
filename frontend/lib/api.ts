@@ -3,9 +3,12 @@
  *
  * Access token sống 15 phút nên mọi request 401 đều được thử làm mới bằng
  * refresh token đúng MỘT lần trước khi đá người dùng ra trang đăng nhập —
- * tránh cảnh đang thao tác nửa chừng thì bị văng.
+ * tránh cảnh đang thao tác nửa chừng thì bị văng. Chế độ desktop (RUN_MODE=desktop)
+ * refresh hỏng thì tự cấp phiên mới qua /api/auth/desktop-session, không bao giờ
+ * đòi đăng nhập.
  */
 import type {
+  AppSettings,
   Bump,
   Campaign,
   CheckAllResult,
@@ -88,20 +91,29 @@ async function readError(response: Response): Promise<string> {
 let refreshing: Promise<boolean> | null = null;
 
 async function tryRefresh(): Promise<boolean> {
-  // Nhiều request 401 cùng lúc chỉ được phép gọi /refresh một lần.
+  // Nhiều request 401 cùng lúc chỉ được phép làm mới phiên một lần.
   if (refreshing) return refreshing;
-  const token = tokens.refresh();
-  if (!token) return false;
 
   refreshing = (async () => {
     try {
-      const response = await fetch(`${API_URL}/api/auth/refresh`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ refresh_token: token }),
-      });
-      if (!response.ok) return false;
-      tokens.save((await response.json()) as TokenPair);
+      const token = tokens.refresh();
+      if (token) {
+        const response = await fetch(`${API_URL}/api/auth/refresh`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ refresh_token: token }),
+        });
+        if (response.ok) {
+          tokens.save((await response.json()) as TokenPair);
+          return true;
+        }
+      }
+      // Chế độ desktop (1 máy = 1 user, không có mật khẩu): token cũ hỏng (đổi DB,
+      // đổi JWT secret, refresh hết hạn) thì tự cấp phiên mới thay vì đá ra màn
+      // đăng nhập. SaaS trả 404 -> false, giữ hành vi cũ.
+      const desktop = await fetch(`${API_URL}/api/auth/desktop-session`, { method: "POST" });
+      if (!desktop.ok) return false;
+      tokens.save((await desktop.json()) as TokenPair);
       return true;
     } catch {
       return false;
@@ -170,6 +182,9 @@ export const api = {
       body: { email, password },
       auth: false,
     }),
+  /** Chỉ 200 khi RUN_MODE=desktop (auto-login, không cần mật khẩu); SaaS trả 404. */
+  desktopSession: () =>
+    request<TokenPair>("/api/auth/desktop-session", { method: "POST", auth: false }),
   me: () => request<User>("/api/auth/me"),
   updateMe: (payload: { display_name?: string; telegram_chat_id?: string }) =>
     request<User>("/api/auth/me", { method: "PUT", body: payload }),
@@ -361,4 +376,9 @@ export const api = {
     request<PaymentIntent>("/api/billing/subscribe", { method: "POST", body: { plan, months } }),
   confirmPayment: (plan: string, months = 1) =>
     request<Subscription>("/api/billing/confirm", { method: "POST", body: { plan, months } }),
+
+  // ── Cài đặt (chỉ chế độ desktop) ────────────────────────────────────────
+  appSettings: () => request<AppSettings>("/api/settings"),
+  updateAppSettings: (payload: { openai_api_key?: string; telegram_bot_token?: string }) =>
+    request<AppSettings>("/api/settings", { method: "PUT", body: payload }),
 };

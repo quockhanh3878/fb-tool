@@ -1,5 +1,6 @@
 "use client";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
 import { ThemeToggle } from "@/components/ThemeToggle";
@@ -22,13 +23,21 @@ import {
 } from "@/components/icons";
 import { Badge, Button, cx } from "@/components/ui";
 import { tokens } from "@/lib/api";
+import { useAuth } from "@/lib/auth";
 
 export default function LandingPage() {
+  const router = useRouter();
+  const { user, loading, isDesktop } = useAuth();
   const [isLoggedIn, setIsLoggedIn] = useState(false);
 
   useEffect(() => {
     setIsLoggedIn(Boolean(tokens.access()));
   }, []);
+
+  // Chế độ desktop: 1 máy = 1 user, bỏ qua landing page SaaS, vào thẳng dashboard.
+  useEffect(() => {
+    if (!loading && isDesktop && user) router.replace("/dashboard");
+  }, [loading, isDesktop, user, router]);
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 transition-colors dark:bg-slate-950 dark:text-slate-100">

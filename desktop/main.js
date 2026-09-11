@@ -1,9 +1,15 @@
 // plan: docs/plans/desktop_packaging.md
 //
-// Giai doan 3 — Electron shell toi thieu: spawn 2 sidecar bang .venv/node
-// HE THONG cua may dang chay (chua bundle — Giai doan 4 se dong goi rieng
-// .venv + Next standalone vao resources). Muc tieu: xac nhan luong
-// health-poll -> mo window -> dong app don sach tien trinh hoat dong dung.
+// Giai doan 3 — Electron shell toi thieu: spawn 2 sidecar. Che do dev (chua
+// dong goi) dung .venv/node HE THONG cua may dang chay. Giai doan 4 — dong
+// goi that: backend chay bang Python Embeddable portable bundle o
+// resources/python (tu chua python3xx.dll, khong phu thuoc Python cai san
+// tren may khach — .venv thuong khong the copy sang may khac vi thieu DLL
+// nay), frontend chay bang server.js cua Next standalone qua chinh
+// process.execPath cua Electron voi ELECTRON_RUN_AS_NODE=1 (Electron da
+// nhung san mot Node day du, khong can dong goi Node rieng). Muc tieu:
+// xac nhan luong health-poll -> mo window -> dong app don sach tien trinh
+// hoat dong dung, ca hai che do dev va packaged.
 "use strict";
 
 const { app, BrowserWindow, dialog } = require("electron");
@@ -13,6 +19,8 @@ const path = require("node:path");
 const crypto = require("node:crypto");
 
 const REPO_ROOT = path.join(__dirname, "..");
+const IS_PACKAGED = app.isPackaged;
+const RESOURCES_ROOT = IS_PACKAGED ? process.resourcesPath : REPO_ROOT;
 const BACKEND_PORT = 8877;
 const FRONTEND_PORT = 3100;
 const HEALTH_TIMEOUT_MS = 30000;
@@ -129,10 +137,15 @@ function killByPort(port) {
 }
 
 function startBackend(logDir, dataDir, root) {
-  const pythonExe = path.join(REPO_ROOT, ".venv", "Scripts", "python.exe");
+  const pythonExe = IS_PACKAGED
+    ? path.join(RESOURCES_ROOT, "python", "python.exe")
+    : path.join(REPO_ROOT, ".venv", "Scripts", "python.exe");
   if (!fs.existsSync(pythonExe)) {
-    throw new Error(`Khong tim thay Python trong .venv: ${pythonExe}`);
+    throw new Error(`Khong tim thay Python: ${pythonExe}`);
   }
+  const backendDir = IS_PACKAGED
+    ? path.join(RESOURCES_ROOT, "backend")
+    : path.join(REPO_ROOT, "backend");
   const logStream = fs.createWriteStream(path.join(logDir, "backend.log"), {
     flags: "a",
   });
@@ -140,13 +153,20 @@ function startBackend(logDir, dataDir, root) {
     pythonExe,
     ["-m", "uvicorn", "app.main:app", "--host", "127.0.0.1", "--port", String(BACKEND_PORT)],
     {
-      cwd: path.join(REPO_ROOT, "backend"),
+      cwd: backendDir,
       env: {
         ...process.env,
         RUN_MODE: "desktop",
         DATABASE_URL: toSqliteUrl(dataDir),
         JWT_SECRET: ensureJwtSecret(root),
         BROWSER_PROFILES_ROOT: path.join(dataDir, "browser_profiles"),
+        // Dashboard (cong FRONTEND_PORT) goi API khac cong -> cross-origin. CORS
+        // mac dinh cua backend chi mo cong 3000 (dev SaaS) nen trinh duyet chan
+        // moi request, auto-login desktop-session that bai -> ket o man dang nhap.
+        CORS_ORIGINS: JSON.stringify([
+          `http://127.0.0.1:${FRONTEND_PORT}`,
+          `http://localhost:${FRONTEND_PORT}`,
+        ]),
       },
     }
   );
@@ -159,18 +179,36 @@ function startBackend(logDir, dataDir, root) {
 }
 
 function startFrontend(logDir) {
-  const npmCmd = process.platform === "win32" ? "npm.cmd" : "npm";
   const logStream = fs.createWriteStream(path.join(logDir, "frontend.log"), {
     flags: "a",
   });
-  const proc = spawn(npmCmd, ["run", "dev", "--", "-p", String(FRONTEND_PORT)], {
-    cwd: path.join(REPO_ROOT, "frontend"),
-    shell: process.platform === "win32",
-    env: {
-      ...process.env,
-      NEXT_PUBLIC_API_URL: `http://127.0.0.1:${BACKEND_PORT}`,
-    },
-  });
+  let proc;
+  if (IS_PACKAGED) {
+    // Next standalone dong san NEXT_PUBLIC_API_URL luc build (bien client-side
+    // duoc inline vao JS, khong doc lai luc chay) — build packaging phai dung
+    // dung BACKEND_PORT o tren. Chay bang chinh Electron lam Node de khoi phai
+    // dong goi Node rieng.
+    const serverJs = path.join(RESOURCES_ROOT, "frontend", "server.js");
+    proc = spawn(process.execPath, [serverJs], {
+      cwd: path.join(RESOURCES_ROOT, "frontend"),
+      env: {
+        ...process.env,
+        ELECTRON_RUN_AS_NODE: "1",
+        PORT: String(FRONTEND_PORT),
+        HOSTNAME: "127.0.0.1",
+      },
+    });
+  } else {
+    const npmCmd = process.platform === "win32" ? "npm.cmd" : "npm";
+    proc = spawn(npmCmd, ["run", "dev", "--", "-p", String(FRONTEND_PORT)], {
+      cwd: path.join(REPO_ROOT, "frontend"),
+      shell: process.platform === "win32",
+      env: {
+        ...process.env,
+        NEXT_PUBLIC_API_URL: `http://127.0.0.1:${BACKEND_PORT}`,
+      },
+    });
+  }
   proc.stdout.pipe(logStream);
   proc.stderr.pipe(logStream);
   proc.on("exit", (code, signal) => {

@@ -68,6 +68,10 @@ out/
 *.tsbuildinfo
 .turbo/
 
+# ─── Đóng gói desktop (dựng lại bằng script, không commit blob nhị phân) ────
+desktop/build-runtime/
+desktop/release/
+
 # ─── Claude Code (cục bộ, không chia sẻ) ───────────────────────────────────
 .claude/settings.local.json
 

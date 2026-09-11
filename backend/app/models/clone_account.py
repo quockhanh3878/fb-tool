@@ -33,6 +33,9 @@ class CloneAccount(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     warmup_day: Mapped[int] = mapped_column(Integer, default=0)
     warmup_started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     cooldown_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Mốc sớm nhất nick được comment tiếp (giãn cách giữa 2 comment, Task 3.6).
+    # Khác cooldown_until: không đổi trạng thái state machine, chỉ là nhịp bắn.
+    next_comment_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     last_checkpoint_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     consecutive_failures: Mapped[int] = mapped_column(Integer, default=0)
     is_backup: Mapped[bool] = mapped_column(Boolean, default=False)

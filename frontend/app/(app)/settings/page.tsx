@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import {
   IconCheck,
@@ -7,6 +7,7 @@ import {
   IconExternalLink,
   IconLogout,
   IconSettings,
+  IconSparkles,
   IconTelegram,
   IconUsers,
 } from "@/components/icons";
@@ -22,6 +23,7 @@ import {
 } from "@/components/ui";
 import { API_URL, api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
+import type { AppSettings } from "@/lib/types";
 
 export default function SettingsPage() {
   const { user, refreshUser, logout } = useAuth();
@@ -30,6 +32,38 @@ export default function SettingsPage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [linkCode, setLinkCode] = useState<{ link_code: string; instructions: string } | null>(null);
+
+  // Chỉ tồn tại ở chế độ desktop (RUN_MODE=desktop) — SaaS trả 404, ẩn hẳn thẻ.
+  const [appSettings, setAppSettings] = useState<AppSettings | null>(null);
+  const [openaiKey, setOpenaiKey] = useState("");
+  const [telegramToken, setTelegramToken] = useState("");
+  const [savingAppSettings, setSavingAppSettings] = useState(false);
+
+  useEffect(() => {
+    api
+      .appSettings()
+      .then(setAppSettings)
+      .catch(() => setAppSettings(null));
+  }, []);
+
+  async function saveAppSettings() {
+    setError("");
+    setSavingAppSettings(true);
+    try {
+      const payload: { openai_api_key?: string; telegram_bot_token?: string } = {};
+      if (openaiKey.trim()) payload.openai_api_key = openaiKey.trim();
+      if (telegramToken.trim()) payload.telegram_bot_token = telegramToken.trim();
+      const result = await api.updateAppSettings(payload);
+      setAppSettings(result);
+      setOpenaiKey("");
+      setTelegramToken("");
+      toast.success("Đã lưu cấu hình hệ thống", "Thành công");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Lưu cấu hình thất bại");
+    } finally {
+      setSavingAppSettings(false);
+    }
+  }
 
   async function save() {
     setError("");
@@ -124,6 +158,49 @@ export default function SettingsPage() {
           </Field>
         </div>
       </Card>
+
+      {/* ── CẤU HÌNH HỆ THỐNG (CHỈ CHẾ ĐỘ DESKTOP) ────────────────────────── */}
+      {appSettings && (
+        <Card
+          title={
+            <div className="flex items-center gap-2">
+              <IconSparkles size={17} className="text-amber-500" />
+              <span>Cấu hình OpenAI &amp; Telegram Bot</span>
+            </div>
+          }
+          action={
+            <Button size="sm" onClick={saveAppSettings} loading={savingAppSettings} disabled={savingAppSettings}>
+              Lưu cấu hình
+            </Button>
+          }
+        >
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field
+              label={`OpenAI API Key ${appSettings.openai_api_key_set ? "(đã cấu hình)" : "(chưa cấu hình)"}`}
+            >
+              <Input
+                type="password"
+                value={openaiKey}
+                placeholder={appSettings.openai_api_key_set ? "••••••••••••••••" : "sk-..."}
+                onChange={(e) => setOpenaiKey(e.target.value)}
+              />
+            </Field>
+            <Field
+              label={`Telegram Bot Token ${appSettings.telegram_bot_token_set ? "(đã cấu hình)" : "(chưa cấu hình)"}`}
+            >
+              <Input
+                type="password"
+                value={telegramToken}
+                placeholder={appSettings.telegram_bot_token_set ? "••••••••••••••••" : "123456:ABC-..."}
+                onChange={(e) => setTelegramToken(e.target.value)}
+              />
+            </Field>
+          </div>
+          <p className="mt-3 text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+            Để trống ô nào thì giữ nguyên giá trị đang lưu của ô đó. Áp dụng ngay không cần khởi động lại app.
+          </p>
+        </Card>
+      )}
 
       {/* ── TELEGRAM BOT CARD ───────────────────────────────────────────── */}
       <Card

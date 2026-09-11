@@ -4,9 +4,10 @@ Shooter task — lấy lượt comment trong hàng đợi và đăng lên Facebo
 Ba lớp phanh trước khi bắn:
   1. quota ngày của chiến dịch (đếm theo LƯỢT, kể cả lượt hỏng)
   2. trạng thái clone (chỉ ACTIVE mới được bắn) + hạn mức riêng của clone
-  3. AdaptiveRateLimiter — giãn nhịp khi tỉ lệ thành công tụt
+  3. giãn cách `clone.next_comment_at` — AdaptiveRateLimiter tính theo khoảng
+     delay của chiến dịch, giãn thêm khi tỉ lệ thành công tụt
 """
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import select
 
@@ -42,6 +43,9 @@ def clone_can_shoot(clone: CloneAccount, now: datetime | None = None) -> bool:
     cooldown = as_utc(clone.cooldown_until)
     if cooldown is not None and cooldown > now:
         return False
+    next_comment_at = as_utc(clone.next_comment_at)
+    if next_comment_at is not None and next_comment_at > now:
+        return False
     today = now.date().isoformat()
     used = clone.daily_comment_count if clone.daily_counter_date == today else 0
     return used < (clone.daily_comment_limit or 20)
@@ -58,6 +62,16 @@ async def _pick_shooter(db, user_id: str) -> CloneAccount | None:
         if clone_can_shoot(clone):
             return clone
     return None
+
+
+async def _comment_gap(
+    limiter: AdaptiveRateLimiter, clone: CloneAccount, campaign: Campaign
+) -> int:
+    return await limiter.next_delay(
+        clone.id,
+        delay_min_seconds=campaign.delay_min_seconds,
+        delay_max_seconds=campaign.delay_max_seconds,
+    )
 
 
 async def _due_actions() -> list[str]:
@@ -100,6 +114,13 @@ async def _execute(action_id: str) -> dict:
             return {"skipped": "no_available_shooter_clone"}
 
         manager = AccountManager(db)
+        limiter = AdaptiveRateLimiter(db)
+        previous_next_comment_at = clone.next_comment_at
+        # Giữ chỗ giãn cách NGAY lúc nhận việc: lượt khác chạy song song hay tiến
+        # trình chết giữa chừng cũng không bắn tiếp bằng nick này trước hạn.
+        clone.next_comment_at = utcnow() + timedelta(
+            seconds=await _comment_gap(limiter, clone, campaign)
+        )
         action.clone_account_id = clone.id
         action.status = CommentStatus.IN_PROGRESS.value
         action.executed_at = utcnow()
@@ -115,6 +136,8 @@ async def _execute(action_id: str) -> dict:
         except BrowserRuntimeUnavailable as exc:
             action.status = CommentStatus.QUEUED.value  # trả về hàng đợi, không mất việc
             action.error_message = str(exc)
+            # Chưa chạm tới Facebook -> trả lại lịch giãn cách cũ của nick.
+            clone.next_comment_at = previous_next_comment_at
             await db.commit()
             return {"error": str(exc)}
         except Exception as exc:
@@ -137,8 +160,9 @@ async def _execute(action_id: str) -> dict:
             if status == CommentStatus.SHADOWBANNED.value:
                 post.status = PostStatus.SKIPPED.value
 
-        # Nhịp bắn kế tiếp do lịch sử thành công quyết định.
-        delay = await AdaptiveRateLimiter(db).next_delay(clone.id)
+        # Nhịp bắn kế tiếp do lịch sử thành công quyết định, tính từ lúc comment xong.
+        delay = await _comment_gap(limiter, clone, campaign)
+        clone.next_comment_at = utcnow() + timedelta(seconds=delay)
         await db.commit()
 
         if user and user.telegram_chat_id:

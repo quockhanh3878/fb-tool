@@ -29,6 +29,12 @@ export interface TokenPair {
   expires_in: number;
 }
 
+/** plan: docs/plans/desktop_packaging.md — chỉ tồn tại khi RUN_MODE=desktop. */
+export interface AppSettings {
+  openai_api_key_set: boolean;
+  telegram_bot_token_set: boolean;
+}
+
 export interface Campaign {
   id: string;
   user_id: string;

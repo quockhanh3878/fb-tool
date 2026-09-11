@@ -166,6 +166,31 @@ def compute_delay(
     return int(max(minimum, min(maximum, delay)))
 
 
+def comment_gap_seconds(
+    success_rate: float,
+    delay_min_seconds: int,
+    delay_max_seconds: int,
+    rng: random.Random | None = None,
+) -> int:
+    """Delay giữa 2 comment của MỘT nick theo khoảng khách đặt cho chiến dịch.
+
+    Gốc bốc ngẫu nhiên trong [min, max] của chiến dịch (mặc định 5–15 phút) rồi
+    đi qua compute_delay để giãn theo tỉ lệ thành công. Sàn là
+    max(MIN_DELAY_SEC, min): không ngắn hơn khoảng khách chọn, không dưới sàn cứng.
+    """
+    rng = rng or random
+    minimum = max(MIN_DELAY_SEC, int(delay_min_seconds or 0))
+    upper = max(minimum, int(delay_max_seconds or 0))
+    base = int(rng.uniform(minimum, upper))
+    return compute_delay(
+        success_rate,
+        base=base,
+        minimum=minimum,
+        maximum=max(MAX_DELAY_SEC, upper),
+        jitter_rng=rng,
+    )
+
+
 class AdaptiveRateLimiter:
     """Đọc lịch sử comment_actions để quyết định nhịp bắn tiếp theo."""
 
@@ -202,6 +227,17 @@ class AdaptiveRateLimiter:
         wins = sum(1 for a in finished if a.status == CommentStatus.SUCCESS.value)
         return wins / len(finished)
 
-    async def next_delay(self, clone_id: str, hours: int = 24) -> int:
+    async def next_delay(
+        self,
+        clone_id: str,
+        hours: int = 24,
+        *,
+        delay_min_seconds: int | None = None,
+        delay_max_seconds: int | None = None,
+    ) -> int:
+        """Có khoảng delay của chiến dịch thì bám khoảng đó, không thì dùng base cố định."""
         actions = await self.recent_actions(clone_id, hours=hours)
-        return compute_delay(self.success_rate(actions), base=self.base_delay)
+        rate = self.success_rate(actions)
+        if delay_min_seconds is None or delay_max_seconds is None:
+            return compute_delay(rate, base=self.base_delay)
+        return comment_gap_seconds(rate, delay_min_seconds, delay_max_seconds)

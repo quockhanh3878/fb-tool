@@ -146,7 +146,7 @@ export default function ClonesPage() {
             </h1>
           </div>
           <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-            Phân bổ chuyên biệt: nick quét bài săn lead, nick cmt ứng tuyển, nick đăng bài seeding để tối ưu hiệu suất và chống checkpoint chéo.
+            Hỗ trợ 2 chế độ: <strong>Chế độ 1 nick</strong> (kết nối Chrome Profile / CDP an toàn nhất) &amp; <strong>Chế độ nhiều nick</strong> (nạp file cookie JSON từ J2TEAM Cookies).
           </p>
         </div>
 
@@ -166,6 +166,29 @@ export default function ClonesPage() {
           </Button>
         </div>
       </header>
+
+      {/* Banner phân định 2 chế độ vận hành */}
+      <div className="grid gap-3 sm:grid-cols-2">
+        <div className="rounded-xl border border-indigo-200/70 bg-gradient-to-br from-indigo-50/70 to-white p-3.5 text-xs text-indigo-950 dark:border-indigo-900/60 dark:from-indigo-950/40 dark:to-slate-900/40 dark:text-indigo-200">
+          <div className="flex items-center gap-2 font-semibold text-indigo-900 dark:text-indigo-300">
+            <span>🛡️</span>
+            <span>Chế độ 1 nick (Cá nhân / Khuyên dùng)</span>
+          </div>
+          <p className="mt-1.5 leading-relaxed text-slate-600 dark:text-slate-300">
+            Dùng trực tiếp <strong>Chrome Profile</strong> hoặc attach cổng <strong>CDP 9222</strong>. Trình duyệt giữ trọn vẹn vân tay phần cứng và phiên đăng nhập thật — an toàn tuyệt đối, không sợ checkpoint.
+          </p>
+        </div>
+
+        <div className="rounded-xl border border-sky-200/70 bg-gradient-to-br from-sky-50/70 to-white p-3.5 text-xs text-sky-950 dark:border-sky-900/60 dark:from-sky-950/40 dark:to-slate-900/40 dark:text-sky-200">
+          <div className="flex items-center gap-2 font-semibold text-sky-900 dark:dark:text-sky-300">
+            <span>🍪</span>
+            <span>Chế độ nhiều nick (Dàn Clone / Scale)</span>
+          </div>
+          <p className="mt-1.5 leading-relaxed text-slate-600 dark:text-slate-300">
+            Xuất file cookie JSON từ tiện ích <strong>J2TEAM Cookies</strong> (hoặc Cookie-Editor) rồi bấm <em>«Nạp cookie J2TEAM»</em>. Hệ thống tự động mã hóa Fernet và cấp profile riêng cho từng clone.
+          </p>
+        </div>
+      </div>
 
       {checkNote && (
         <div className="flex items-start gap-2.5 rounded-xl border border-indigo-200/80 bg-indigo-50/70 p-3.5 text-xs text-indigo-950 dark:border-indigo-900/60 dark:bg-indigo-950/40 dark:text-indigo-300">
@@ -263,6 +286,14 @@ export default function ClonesPage() {
         }
       >
         <ErrorNote>{formError}</ErrorNote>
+        <div className="mb-3 rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600 dark:border-slate-800 dark:bg-slate-900/60 dark:text-slate-400">
+          <p className="font-medium text-slate-800 dark:text-slate-200">💡 Chọn cách liên kết sau khi tạo:</p>
+          <ul className="mt-1 list-inside list-disc space-y-0.5">
+            <li><strong>Mode 1 nick:</strong> Gắn Chrome Profile/CDP 9222 sẵn có để tận dụng phiên đăng nhập và vân tay thật.</li>
+            <li><strong>Mode nhiều nick:</strong> Xuất file từ extension <strong>J2TEAM Cookies</strong> rồi nạp trực tiếp vào thẻ clone.</li>
+          </ul>
+        </div>
+
         <Field label="Tên gợi nhớ (Nick)">
           <Input
             value={form.display_name}
@@ -503,8 +534,8 @@ function CloneCard({
           hidden
           onChange={(e) => e.target.files?.[0] && upload(e.target.files[0])}
         />
-        <Button size="sm" variant="ghost" onClick={() => fileInput.current?.click()}>
-          Nạp cookie
+        <Button size="sm" variant="ghost" onClick={() => fileInput.current?.click()} title="Nạp file cookie xuất từ tiện ích J2TEAM Cookies hoặc Cookie-Editor">
+          Nạp cookie (J2TEAM / JSON)
         </Button>
         <Button
           size="sm"

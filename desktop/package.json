@@ -5,9 +5,47 @@
   "description": "Electron shell cho CommHunter AI chay tren may khach (che do desktop)",
   "main": "main.js",
   "scripts": {
-    "start": "node scripts/launch.js"
+    "start": "node scripts/launch.js",
+    "dist": "electron-builder --win nsis"
   },
   "devDependencies": {
-    "electron": "33.4.11"
+    "electron": "33.4.11",
+    "electron-builder": "^26.15.3"
+  },
+  "build": {
+    "appId": "vn.commhunter.desktop",
+    "productName": "CommHunter AI",
+    "directories": {
+      "output": "release",
+      "buildResources": "build-runtime"
+    },
+    "files": [
+      "main.js",
+      "scripts/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      { "from": "build-runtime/python", "to": "python" },
+      {
+        "from": "../backend",
+        "to": "backend",
+        "filter": ["app/**/*", "alembic/**/*", "alembic.ini", "!**/__pycache__/**", "!**/*.pyc"]
+      },
+      { "from": "../commhunter", "to": "commhunter", "filter": ["*.py"] },
+      { "from": "../commhunter/configs/example.yaml", "to": "commhunter/configs/example.yaml" },
+      { "from": "../frontend/.next/standalone", "to": "frontend" },
+      { "from": "../frontend/.next/static", "to": "frontend/.next/static" },
+      { "from": "../frontend/public", "to": "frontend/public" }
+    ],
+    "afterPack": "scripts/after-pack.js",
+    "win": {
+      "target": ["nsis"],
+      "artifactName": "CommHunterAI-Setup-${version}.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true
+    }
   }
 }

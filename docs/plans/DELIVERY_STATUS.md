@@ -1,6 +1,6 @@
 # TÌNH TRẠNG BÀN GIAO — Đối chiếu Plan ↔ Mã nguồn thực tế
 
-> Cập nhật: 11/09/2026 (Track A Item 3: E2E đường backend `publisher_task → execute_publish → publish_post_real` chạy thật trên burner group `1042987808508567` — `PublishStatus.PUBLISHED` + permalink thật + `delete_own_post_real` dọn sạch; sửa 2 bug `_post_submitted_ok` báo FAILED giả và `_open_own_post_menu` bấm nhầm bài "được đề xuất". Track D: `preflight_service.run_preflight` kiểm nick còn đăng nhập + không checkpoint trước lượt quét/đăng, gate qua `settings.preflight_before_run`; +14 assertion (pipeline 116, backend 314). Track C "mode treo": scout + publisher tự dừng nick khi checkpoint / hỏng liên tiếp qua `AccountManager`, dùng chung `build_clone_notifier`; +8 assertion mục 14d-bis/14e). 10/09/2026: migration `0004` cho Track A; `notify_mentions` bắn Telegram ở CẢ HAI đường ingest. Tài liệu này đối chiếu **từng task trong 4 plan** với mã nguồn
+> Cập nhật: 11/09/2026 (Desktop giai đoạn 3c: vá 3 lỗ hổng làm app desktop vẫn đòi đăng nhập — CORS cổng 3100, token cũ hỏng, `isDesktop` mất ở lần mở thứ 2; build lại `CommHunterAI-Setup-0.1.0.exe`. Đối chiếu yêu cầu khách → vá 2 lỗ hổng nặng: (1) backend nay giãn cách giữa 2 comment của một nick theo khoảng delay chiến dịch qua `clone.next_comment_at` (migration `0007`) — trước đó delay được tính rồi bỏ đi, 30 giây bốc 5 comment bắn liền; (2) chế độ desktop nhận nút bấm Telegram qua long-polling `workers/telegram_poller.py` vì máy local không có URL public cho webhook; +20 assertion, backend 348. Track A Item 3: E2E đường backend `publisher_task → execute_publish → publish_post_real` chạy thật trên burner group `1042987808508567` — `PublishStatus.PUBLISHED` + permalink thật + `delete_own_post_real` dọn sạch; sửa 2 bug `_post_submitted_ok` báo FAILED giả và `_open_own_post_menu` bấm nhầm bài "được đề xuất". Track D: `preflight_service.run_preflight` kiểm nick còn đăng nhập + không checkpoint trước lượt quét/đăng, gate qua `settings.preflight_before_run`; +14 assertion (pipeline 116, backend 314). Track C "mode treo": scout + publisher tự dừng nick khi checkpoint / hỏng liên tiếp qua `AccountManager`, dùng chung `build_clone_notifier`; +8 assertion mục 14d-bis/14e). 10/09/2026: migration `0004` cho Track A; `notify_mentions` bắn Telegram ở CẢ HAI đường ingest. Tài liệu này đối chiếu **từng task trong 4 plan** với mã nguồn
 > đã thực sự tồn tại trong repo, và nói rõ **cái gì chưa làm được và vì sao**.
 >
 > Nguyên tắc: chỉ ghi **Xong** khi có mã nguồn chạy được **và** có test chứng minh.
@@ -14,7 +14,7 @@
 | Phase | Task theo plan | Đã có mã + test | Chặn bởi yếu tố ngoài | Ghi chú |
 |---|---|---|---|---|
 | **Phase 1 — MVP Script** | 11 | 10 | 1 (Sprint 3: chạy thật) | 116/116 assertion PASS |
-| **Phase 2 — Dashboard** | 19 | 18 | 1 (deploy VPS + SSL) | 328/328 assertion PASS; đăng bài E2E đường backend đã chạy thật trên burner |
+| **Phase 2 — Dashboard** | 19 | 18 | 1 (deploy VPS + SSL) | 348/348 assertion PASS; đăng bài E2E đường backend đã chạy thật trên burner |
 | **Phase 3 — Anti-Ban** | 6 | 6 | — (ngưỡng cần hiệu chỉnh thật) | Logic thuần, test offline |
 | **Phase 4 — Thương mại** | 7 | 5 | 2 (cổng thanh toán, admin dashboard) | Xem §5 |
 
@@ -22,12 +22,12 @@
 
 ```
 commhunter/tests/test_pipeline.py   →  116 PASS / 0 FAIL
-backend/tests/test_api.py           →  328 PASS / 0 FAIL (14g: SerialJobQueue, 14h: seed user + app_settings che do desktop)
+backend/tests/test_api.py           →  348 PASS / 0 FAIL (14g: SerialJobQueue, 14h: seed user + app_settings che do desktop, 14i: gian cach comment, 14j: Telegram polling desktop)
 frontend: npx tsc --noEmit          →    0 lỗi
 frontend: npx next build            →    0 lỗi TypeScript, 15 route
 API surface (openapi.json)          →   68 path / 86 operation
 docker compose config --services    →    db, redis, api, worker, beat  (đủ 5)
-alembic upgrade head / downgrade    →    11 bảng + 0002 (xoay vòng) + 0003 (Nhắc tới) + 0004 (Track A: post_publishes + daily_post_*) + 0005 (tuỳ chọn AI comment) + 0006 (app_settings che do desktop), lên xuống sạch, `alembic check` không drift
+alembic upgrade head / downgrade    →    11 bảng + 0002 (xoay vòng) + 0003 (Nhắc tới) + 0004 (Track A: post_publishes + daily_post_*) + 0005 (tuỳ chọn AI comment) + 0006 (app_settings che do desktop) + 0007 (clone_accounts.next_comment_at), lên xuống sạch, `alembic check` không drift
 ```
 
 ---
@@ -112,7 +112,7 @@ Tiêu chí nghiệm thu của plan đều đạt: `docker compose config` liệt
 | Checkpoint Detection 3 lớp | Xong | `backend/app/services/anti_ban.py` — URL, tiêu đề (Việt + Anh), DOM |
 | Shadowban Detection | Xong | `anti_ban.ShadowbanDetector` — đối chiếu comment có thật sự hiện trên trang |
 | Proxy Manager | Xong | `backend/app/services/proxy_manager.py` + `/api/health/proxies/*` |
-| Adaptive Rate Limiter | Xong | `anti_ban.compute_delay` — tỉ lệ thành công ≥0.95 giãn ×0.8, <0.50 kịch trần; luôn kẹp trong [180, 1800] giây |
+| Adaptive Rate Limiter | Xong | `anti_ban.compute_delay` — tỉ lệ thành công ≥0.95 giãn ×0.8, <0.50 kịch trần; luôn kẹp trong [180, 1800] giây. **Nối vào đường bắn (11/09/2026)**: trước đó `shooter_task._execute` tính delay rồi chỉ trả về trong dict, `campaign.delay_min/max_seconds` không nơi nào đọc → bản dashboard/desktop bắn comment liền nhau. Nay `anti_ban.comment_gap_seconds` bốc gốc trong [min, max] của chiến dịch (mặc định 5–15 phút) rồi qua `compute_delay`, sàn `max(180, min)`; kết quả ghi `clone.next_comment_at` (migration `0007`) ngay lúc nhận việc và tính lại sau khi comment xong; browser không sẵn sàng thì trả lại lịch cũ; `clone_can_shoot` chặn nick chưa hết giãn cách (lượt vẫn nằm hàng đợi). Test `test_api.py` mục 14i (7 assertion, chạy thật `_execute`) + mục 15/16 (7 assertion), đã kiểm đột biến 3 điểm (gỡ guard, gỡ trả lịch, `max`→`min` ở sàn). Cơ chế bump dùng chung hàng đợi nên cũng bị giãn cách. |
 | Health Monitor Dashboard | Xong | `/health` + `backend/app/routers/health.py` |
 
 **Tự phục hồi đã hiện thực:** `workers/health_check_task.py` phát hiện clone mất cookie → chuyển
@@ -182,7 +182,10 @@ Xem `docs/plans/desktop_packaging.md`. Mục tiêu: mỗi khách chạy toàn b�
 | 1 — Thay Celery+Redis bằng APScheduler + SerialJobQueue | Xong | `backend/app/workers/{job_queue,scheduler}.py` mới; `RUN_MODE=desktop` bật trong `main.py`, chế độ SaaS cũ không đổi hành vi. Test mục 14g (3 assertion) |
 | 2 — Desktop config (seed user, app_settings, cookie key bền) | Xong | `desktop_service.ensure_desktop_user`, `app_settings_service.py`, router `settings.py`, `POST /api/auth/desktop-session`; migration `0006_app_settings.py`. Test mục 14h (11 assertion) |
 | 3 — Electron shell tối thiểu | Xong | `desktop/main.js` mới (spawn 2 sidecar bằng `.venv`/`node` hệ thống, chưa bundle); health-poll → mở window → `before-quit` dọn sạch (taskkill tree + dọn theo cổng dự phòng). Kiểm chứng thủ công: `npm start` trong `desktop/`, đóng graceful, xác nhận process/port sạch qua `Get-CimInstance`/`netstat` |
-| 4 — Đóng gói thật (bundle `.venv`, NSIS) | Chưa làm | — |
+| 3b — Auto-login + màn Cài đặt (vá lỗ hổng UI) | Xong | `frontend/lib/auth.tsx` tự gọi `/api/auth/desktop-session` khi chưa có token (SaaS 404 → hành vi cũ); `app/page.tsx` bỏ qua landing khi `isDesktop`; `app/(app)/settings/page.tsx` thêm thẻ cấu hình OpenAI key/Telegram token gọi `/api/settings`, tự ẩn ở SaaS. `tsc` 0 lỗi, `next build` 14 route 0 lỗi |
+| 3c — Vá auto-login desktop thật sự không đòi đăng nhập (11/09/2026) | Xong | 3 lỗ hổng làm app vẫn hiện màn đăng nhập: (1) **CORS** — dashboard `127.0.0.1:3100` gọi API `8877` khác cổng, CORS mặc định chỉ mở `3000` → trình duyệt chặn `desktop-session` (preflight 400); `desktop/main.js` truyền `CORS_ORIGINS` cho backend sidecar. (2) Token cũ hỏng (đổi DB/JWT secret, refresh hết hạn) → `api.ts` đá ra `/login`; nay `tryRefresh` rơi về `desktop-session` (SaaS 404 → hành vi cũ). (3) Mở app lần 2 (đã có token) `isDesktop` = false → hiện landing SaaS; nay `auth.tsx` luôn gọi `desktop-session` khi mount, `/login` tự chuyển vào dashboard ở desktop. Kiểm chứng: `tsc` 0 lỗi, `next build` 0 lỗi; Playwright trên backend `RUN_MODE=desktop` — token hỏng mở `/` → `/dashboard`, token hỏng giữa phiên → ở lại trang + token mới; đột biến gỡ nhánh desktop-session trong `tryRefresh` → văng về `/login` (đỏ). Bản đóng gói `win-unpacked` chạy thật: preflight origin 3100 → 200, mở `127.0.0.1:3100` vào thẳng `/dashboard`, màn Cài đặt hiện thẻ OpenAI/Telegram. Không có test tự động frontend (repo chưa có bộ test UI) |
+| 4 — Đóng gói thật (Python Embeddable + Next standalone + electron-builder NSIS) | Xong | Phát hiện `.venv` không portable trên Windows (thiếu `python311.dll`, phụ thuộc bản Python gốc trên máy dev) — chuyển sang Python Embeddable chính thức từ python.org, tự chứa DLL, cài `pip install -r backend/requirements.txt -r commhunter/requirements.txt`. `desktop/main.js` thêm nhánh `IS_PACKAGED`; `desktop/package.json` field `build` (electron-builder) + hook `afterPack` (`scripts/after-pack.js`, vá bug electron-builder luôn bỏ qua thư mục `node_modules` khi copy `extraResources`). **Chạy thật**: `npm run dist` → `.exe` ~128MB → cài silent vào thư mục cách ly, xoá `userData` cũ (mô phỏng máy sạch) → backend + frontend health 200 không cần `.venv`/`npm` hệ thống, `desktop-session` + `/api/settings` đúng qua HTTP thật, đóng graceful dọn sạch cổng |
+| G — Telegram long-polling (nút bấm bán tự động ở desktop) | Xong | `workers/telegram_poller.py` gọi `getUpdates` rồi đưa vào `routers/telegram_webhook.handle_update` dùng chung với webhook SaaS; bật/tắt theo `RUN_MODE=desktop` trong `main.py`. Test mục 14j (6 assertion), đã kiểm đột biến. **Chưa chạy với bot Telegram thật.** |
 | 5 — Tài liệu first-run cho khách | Chưa làm | — |
 
 ---

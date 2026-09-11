@@ -3,7 +3,8 @@ Notification Hub — gửi Telegram cho từng user (multi-tenant).
 
 Phase 1 dùng 1 bot cho 1 khách. Từ Phase 2 hệ thống dùng CHUNG một bot,
 phân biệt khách bằng `users.telegram_chat_id`, và nhận nút bấm qua webhook
-thay vì polling (xem routers/telegram_webhook.py).
+thay vì polling (xem routers/telegram_webhook.py). Riêng chế độ desktop không
+có URL public nên nhận qua long-polling (workers/telegram_poller.py).
 
 Lớp này gọi HTTP API Telegram trực tiếp bằng httpx — không kéo theo
 python-telegram-bot vào tiến trình API để giữ ảnh API nhẹ.
@@ -95,11 +96,11 @@ class NotificationService:
     def enabled(self) -> bool:
         return bool(self.bot_token)
 
-    async def _call(self, method: str, payload: dict) -> dict | None:
+    async def _call(self, method: str, payload: dict, timeout: float = 15) -> dict | None:
         if not self.enabled:
             return None
         url = TELEGRAM_API.format(token=self.bot_token, method=method)
-        client = self._client or httpx.AsyncClient(timeout=15)
+        client = self._client or httpx.AsyncClient(timeout=timeout)
         try:
             response = await client.post(url, json=payload)
             if response.status_code >= 400:
@@ -124,6 +125,21 @@ class NotificationService:
                 "sendMessage", {"chat_id": chat_id, "text": strip_markdown(text)}
             )
         return result
+
+    async def get_updates(self, offset: int, timeout: int) -> dict | None:
+        """Long-polling `getUpdates` cho chế độ desktop (không có URL public cho webhook).
+
+        Telegram giữ kết nối tối đa `timeout` giây nên client HTTP phải chờ lâu hơn thế.
+        """
+        return await self._call(
+            "getUpdates",
+            {
+                "offset": offset,
+                "timeout": timeout,
+                "allowed_updates": ["message", "callback_query"],
+            },
+            timeout=timeout + 10,
+        )
 
     async def send_post_notification(self, chat_id: str, post, campaign_name: str = "") -> dict | None:
         if not chat_id:
