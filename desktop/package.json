@@ -1,0 +1,13 @@
+{
+  "name": "commhunter-desktop",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Electron shell cho CommHunter AI chay tren may khach (che do desktop)",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron ."
+  },
+  "devDependencies": {
+    "electron": "33.4.11"
+  }
+}

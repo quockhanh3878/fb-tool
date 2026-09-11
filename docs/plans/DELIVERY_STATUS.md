@@ -181,7 +181,7 @@ Xem `docs/plans/desktop_packaging.md`. Mục tiêu: mỗi khách chạy toàn b�
 |---|---|---|
 | 1 — Thay Celery+Redis bằng APScheduler + SerialJobQueue | Xong | `backend/app/workers/{job_queue,scheduler}.py` mới; `RUN_MODE=desktop` bật trong `main.py`, chế độ SaaS cũ không đổi hành vi. Test mục 14g (3 assertion) |
 | 2 — Desktop config (seed user, app_settings, cookie key bền) | Xong | `desktop_service.ensure_desktop_user`, `app_settings_service.py`, router `settings.py`, `POST /api/auth/desktop-session`; migration `0006_app_settings.py`. Test mục 14h (11 assertion) |
-| 3 — Electron shell tối thiểu | Chưa làm | — |
+| 3 — Electron shell tối thiểu | Xong | `desktop/main.js` mới (spawn 2 sidecar bằng `.venv`/`node` hệ thống, chưa bundle); health-poll → mở window → `before-quit` dọn sạch (taskkill tree + dọn theo cổng dự phòng). Kiểm chứng thủ công: `npm start` trong `desktop/`, đóng graceful, xác nhận process/port sạch qua `Get-CimInstance`/`netstat` |
 | 4 — Đóng gói thật (bundle `.venv`, NSIS) | Chưa làm | — |
 | 5 — Tài liệu first-run cho khách | Chưa làm | — |
 

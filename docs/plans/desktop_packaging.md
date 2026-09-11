@@ -1,6 +1,6 @@
 # Đóng gói CommHunter AI thành app desktop chạy trên máy khách
 
-> Cập nhật: 11/09/2026. Trạng thái: Giai đoạn 1-2/6 — Xong (có mã chạy được + test). Giai đoạn 3-5 — Chưa làm.
+> Cập nhật: 11/09/2026. Trạng thái: Giai đoạn 1-3/6 — Xong (có mã chạy được + kiểm chứng thủ công). Giai đoạn 4-5 — Chưa làm.
 
 ## Context
 
@@ -53,14 +53,19 @@ Electron App (khách double-click icon)
 - Test: `backend/tests/test_api.py` mục 14h (11 assertion) — 404 ở SaaS, auto-login idempotent (gọi lại vẫn ra đúng 1 user), GET/PUT settings, PUT áp dụng ngay không cần restart, cookie key sinh 1 lần không đổi. Kiểm đột biến 2 điểm (bỏ early-return `ensure_cookie_key`, đảo điều kiện gate `run_mode`) đều bắt đỏ đúng chỗ, đã hoàn tác.
 - Kiểm chứng: `alembic upgrade head` → `alembic check` không drift → `downgrade base` → `upgrade head` lại sạch. `backend/tests/test_api.py` **328/328 PASS** (317 + 11 mới).
 
-## C-E. Chưa làm (Giai đoạn 3-6)
+## C. Electron shell tối thiểu [ĐÃ XONG]
 
-- Giai đoạn 3 — Electron shell tối thiểu (`desktop/main.js`, chưa bundle).
+- `desktop/main.js` (mới) — spawn 2 sidecar bằng `.venv`/`node` HỆ THỐNG (chưa bundle, Giai đoạn 4 mới đóng gói riêng): backend qua `.venv/Scripts/python.exe -m uvicorn` (`RUN_MODE=desktop`, `DATABASE_URL` SQLite trong `app.getPath("userData")`, `JWT_SECRET` sinh 1 lần + lưu bền), frontend qua `npm run dev -p 3100` (`shell: true` bắt buộc trên Windows vì `npm.cmd` không tự chạy được qua `spawn` không shell — lỗi `spawn EINVAL`). Health-poll `GET /health` mỗi 500ms, timeout 30s, splash window trong lúc chờ, lỗi rõ ràng (dialog + log ra `userData/logs/*.log`) nếu timeout. Mở `BrowserWindow` load `http://127.0.0.1:3100` sau khi cả 2 sidecar khoẻ.
+- `killProcessTree` (`taskkill /pid <pid> /T /F`) không đủ tin cậy dọn cây tiến trình khi sidecar spawn qua `shell:true` (npm.cmd → cmd.exe → node) — tiến trình trung gian thoát trước khi con kịp giữ liên kết parent PID hợp lệ nên `/T` bỏ sót cháu. Thêm `killByPort(port)` dọn theo cổng đang LISTEN (`netstat -ano | findstr :<port> | findstr LISTENING` → `taskkill /pid <pid> /T /F`) làm lớp dọn dự phòng, gọi cùng `killProcessTree` trong `before-quit`.
+- Kiểm chứng thủ công (không phải unit test — đúng như plan gốc mô tả Giai đoạn 3-4): `cd desktop && npm start` (phải bỏ biến môi trường `ELECTRON_RUN_AS_NODE` nếu có trong shell, nếu không `require("electron")` trả về path string thay vì API — lỗi `Cannot read properties of undefined (reading 'whenReady')`). Health-poll backend (8877) + frontend (3100) đều 200 OK, `BrowserWindow` mở đúng dashboard thật (title "CommHunter AI — Nền tảng Săn Lead..."). Đóng app **graceful** (đóng window thật/`taskkill /pid <id>` không `/F`, kích hoạt `window-all-closed` → `app.quit()` → `before-quit` thật sự — **không phải** `Stop-Process -Force`, lệnh này bỏ qua toàn bộ lifecycle event của Electron và không phản ánh đúng hành vi khách đóng app bằng nút X) → xác nhận bằng `Get-CimInstance`/`netstat`: cả tiến trình `python.exe` (uvicorn) và `node.exe` (next dev, kể cả tiến trình con `start-server.js`) đều bị dọn sạch, cổng 8877/3100 hết LISTEN.
+
+## D-E. Chưa làm (Giai đoạn 4-6)
+
 - Giai đoạn 4 — Đóng gói thật (bundle `.venv`, Next standalone, electron-builder NSIS). `commhunter/browser_manager.py` `channel="chrome"` chưa verify trên máy sạch có cần `playwright install` không.
 - Giai đoạn 5 — Tài liệu hoá first-run cho khách.
 - Frontend chưa có màn "Cài đặt" gọi `/api/settings`, chưa có logic auto-login gọi `/api/auth/desktop-session` (API đã sẵn sàng, chỉ thiếu UI).
 
-### Rủi ro / giả định chưa chốt (cần anh Ber xác nhận trước khi làm Giai đoạn 3 trở đi)
+### Rủi ro / giả định chưa chốt (cần anh Ber xác nhận trước khi làm Giai đoạn 4 trở đi)
 1. Bỏ `self.retry()` tức thời (giờ chỉ thử lại ở chu kỳ dispatch kế tiếp 30-60s) — SLA chấp nhận được không?
 2. ~~Cookie encryption key phải sinh 1 lần + lưu bền cho desktop~~ — ĐÃ VÁ (Giai đoạn 2, `ensure_cookie_key`).
 3. `playwright install` (driver nội bộ) — cần verify trên máy Windows sạch chưa từng cài.
