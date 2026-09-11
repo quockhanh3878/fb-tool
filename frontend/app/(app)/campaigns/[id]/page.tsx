@@ -155,6 +155,7 @@ function SettingsTab({ campaign, onSaved }: { campaign: Campaign; onSaved: () =>
         service_specialties: form.service_specialties,
         service_strengths: form.service_strengths,
         landing_page_note: form.landing_page_note,
+        ai_comments_enabled: Boolean(form.ai_comments_enabled),
         ai_filter_prompt: form.ai_filter_prompt,
         mention_keywords: form.mention_keywords ?? [],
         whitelist_keywords: form.whitelist_keywords,
@@ -211,6 +212,25 @@ function SettingsTab({ campaign, onSaved }: { campaign: Campaign; onSaved: () =>
         <Field label="Ghi chú trang bán hàng" hint="Không được chèn link vào comment.">
           <Input value={form.landing_page_note} onChange={set("landing_page_note")} />
         </Field>
+      </div>
+
+      <div className="mt-4 rounded-xl border border-slate-200/90 bg-slate-50/70 p-4 dark:border-slate-800 dark:bg-slate-800/40">
+        <label className="flex items-start gap-3 cursor-pointer">
+          <input
+            type="checkbox"
+            className="mt-0.5 h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+            checked={Boolean(form.ai_comments_enabled)}
+            onChange={(e) => setForm({ ...form, ai_comments_enabled: e.target.checked })}
+          />
+          <div>
+            <span className="text-sm font-semibold text-slate-900 dark:text-white">
+              Tự động sinh comment bằng AI (Tùy chọn — Hiện tại: {form.ai_comments_enabled ? "Đang Bật" : "Đang Tắt"})
+            </span>
+            <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
+              Hiện tại chưa cần thiết: khi tắt, bình luận ứng tuyển được sinh hoàn toàn từ kho kịch bản Spintax trong tab &quot;Kịch bản comment&quot;, không cần cấu hình OpenAI API key và không tốn chi phí token.
+            </p>
+          </div>
+        </label>
       </div>
 
       <div className="mt-4">

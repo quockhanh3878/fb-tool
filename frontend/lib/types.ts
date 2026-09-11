@@ -38,6 +38,7 @@ export interface Campaign {
   service_specialties: string;
   service_strengths: string;
   landing_page_note: string;
+  ai_comments_enabled?: boolean;
   ai_filter_prompt: string;
   /** Từ khóa thương hiệu cho hộp thư "Nhắc tới" — rỗng thì tính năng tắt. */
   mention_keywords: string[];

@@ -315,6 +315,25 @@ class CommHunterApp:
         if cached:
             return cached
 
+        if not getattr(self.config.comment, "use_ai", True):
+            # Tuỳ chọn: không dùng AI sinh comment, dùng TemplatePool hoặc câu chào mặc định
+            tpl_file = getattr(self.config.comment, "template_file", None)
+            if tpl_file and os.path.exists(tpl_file):
+                try:
+                    from comment_templates import TemplatePool
+                    pool = TemplatePool(tpl_file)
+                    picked = pool.pick()
+                    if picked:
+                        self._comment_cache[post.content_hash] = picked
+                        return picked
+                except Exception as e:
+                    logger.warning(f"Không nạp được câu từ template_file: {e}")
+
+            svc = self.config.service
+            default_text = f"Chào bạn, bên mình chuyên {svc.specialties or svc.name}. {svc.landing_page_note or ''}".strip()
+            self._comment_cache[post.content_hash] = default_text
+            return default_text
+
         ai = self._ensure_ai()
         try:
             comment = await ai.generate_comment(

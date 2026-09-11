@@ -125,6 +125,10 @@ comment:
   # "full_auto"  — Tự động comment không cần duyệt. Chỉ bật khi đã tin bộ lọc.
   mode: "semi_auto"
 
+  # Tuỳ chọn dùng AI sinh comment — đặt false để tắt AI và dùng kho câu mẫu tĩnh
+  # use_ai: false
+  # template_file: "comment_templates.txt"  # file mẫu câu tĩnh (nếu có)
+
   ai_model: "gpt-4o-mini"
 
   # Số LƯỢT thao tác/ngày, kể cả thất bại. KHÔNG nên vượt 20 với tài khoản mới.

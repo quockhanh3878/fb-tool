@@ -128,6 +128,8 @@ class FilterConfig:
 class CommentConfig:
     """Cấu hình comment."""
     mode: str = "semi_auto"
+    use_ai: bool = True  # Tuỳ chọn dùng AI sinh comment — mặc định True, đặt False trong yaml để tắt
+    template_file: Optional[str] = None
     ai_model: str = "gpt-4o-mini"
     max_comments_per_day: int = MAX_COMMENTS_PER_DAY
     delay_min_seconds: int = 300

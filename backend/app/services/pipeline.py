@@ -224,8 +224,12 @@ async def build_comment(
             mark_script_used(script)
             return text, script
         except ScriptError:
-            # Kịch bản hỏng thì rơi sang AI thay vì bỏ lỡ khách hàng tiềm năng.
+            # Kịch bản hỏng thì rơi sang AI nếu tính năng AI comment được bật.
             pass
+
+    # Nếu AI comment bị tắt (tuỳ chọn) hoặc chiến dịch chưa bật AI sinh comment:
+    if not getattr(campaign, "ai_comments_enabled", False):
+        return "", script
 
     text = await ai.generate_comment(post.content_text, campaign, post.ai_extracted or {})
     if not text:

@@ -25,6 +25,8 @@ class Campaign(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     landing_page_note: Mapped[str] = mapped_column(Text, default="")
 
     ai_filter_prompt: Mapped[str] = mapped_column(Text, default="")
+    # Tuỳ chọn sinh comment bằng AI — mặc định tắt để tiết kiệm chi phí & ưu tiên Spintax.
+    ai_comments_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
     # Từ khoá thương hiệu cho hộp thư "Nhắc tới" — rỗng thì tính năng tắt.
     mention_keywords: Mapped[list] = mapped_column(JSON, default=list)
     whitelist_keywords: Mapped[list] = mapped_column(JSON, default=list)

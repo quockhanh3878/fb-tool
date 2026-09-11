@@ -38,6 +38,7 @@ const EMPTY = {
   mode: "semi_auto" as Campaign["mode"],
   service_name: "",
   service_specialties: "",
+  ai_comments_enabled: false,
   ai_filter_prompt: "",
   whitelist_keywords: [] as string[],
   blacklist_keywords: [] as string[],
@@ -288,13 +289,32 @@ export default function CampaignsPage() {
           />
         </Field>
 
-        <Field label="Thế mạnh / chuyên môn" hint="AI dùng thông tin này để viết comment sát với yêu cầu của bài viết.">
+        <Field label="Thế mạnh / chuyên môn" hint="Thông tin định vị dịch vụ để đưa vào comment ứng tuyển.">
           <Input
             placeholder="Ví dụ: 3 năm kinh nghiệm, nhận comm giá mềm, bàn giao đúng hạn…"
             value={form.service_specialties}
             onChange={(e) => setForm({ ...form, service_specialties: e.target.value })}
           />
         </Field>
+
+        <div className="rounded-xl border border-slate-200/90 bg-slate-50/70 p-3.5 dark:border-slate-800 dark:bg-slate-800/40">
+          <label className="flex items-start gap-3 cursor-pointer">
+            <input
+              type="checkbox"
+              className="mt-0.5 h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+              checked={form.ai_comments_enabled}
+              onChange={(e) => setForm({ ...form, ai_comments_enabled: e.target.checked })}
+            />
+            <div>
+              <span className="text-sm font-semibold text-slate-800 dark:text-slate-200">
+                Tự động sinh comment bằng AI (Tùy chọn — Mặc định TẮT)
+              </span>
+              <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
+                Hiện tại chưa cần thiết: khi tắt, hệ thống chỉ sử dụng kho kịch bản Spintax xoay vòng do bạn thiết lập, hoàn toàn không cần OpenAI API key và không tốn chi phí token.
+              </p>
+            </div>
+          </label>
+        </div>
 
         <Field label="Tiêu chí lọc cho AI">
           <Textarea

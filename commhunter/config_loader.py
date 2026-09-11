@@ -113,6 +113,8 @@ def load_config(config_path: str) -> AppConfig:
     cmt_raw = raw.get("comment", {})
     comment_cfg = CommentConfig(
         mode=cmt_raw.get("mode", "semi_auto"),
+        use_ai=bool(cmt_raw.get("use_ai", True)),
+        template_file=cmt_raw.get("template_file"),
         ai_model=cmt_raw.get("ai_model", "gpt-4o-mini"),
         max_comments_per_day=cmt_raw.get("max_comments_per_day", 20),
         delay_min_seconds=cmt_raw.get("delay_min_seconds", 300),

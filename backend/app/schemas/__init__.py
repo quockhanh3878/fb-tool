@@ -32,6 +32,18 @@ class TokenPair(BaseModel):
     expires_in: int
 
 
+class AppSettingsOut(BaseModel):
+    """Màn 'Cài đặt' chế độ desktop — chỉ báo đã cấu hình hay chưa, không trả
+    lại giá trị thật (key đã nhập không hiện lại nguyên văn)."""
+    openai_api_key_set: bool
+    telegram_bot_token_set: bool
+
+
+class AppSettingsUpdate(BaseModel):
+    openai_api_key: str | None = Field(default=None, max_length=200)
+    telegram_bot_token: str | None = Field(default=None, max_length=200)
+
+
 class SubscriptionOut(ORMModel):
     plan: str
     max_groups: int
@@ -72,6 +84,7 @@ class CampaignBase(BaseModel):
     service_specialties: str = ""
     service_strengths: str = ""
     landing_page_note: str = ""
+    ai_comments_enabled: bool = False
     ai_filter_prompt: str = ""
     mention_keywords: list[str] = Field(default_factory=list)
     whitelist_keywords: list[str] = Field(default_factory=list)
@@ -102,6 +115,7 @@ class CampaignUpdate(BaseModel):
     service_specialties: str | None = None
     service_strengths: str | None = None
     landing_page_note: str | None = None
+    ai_comments_enabled: bool | None = None
     ai_filter_prompt: str | None = None
     mention_keywords: list[str] | None = None
     whitelist_keywords: list[str] | None = None
@@ -122,6 +136,7 @@ class CampaignOut(ORMModel):
     service_specialties: str
     service_strengths: str
     landing_page_note: str
+    ai_comments_enabled: bool
     ai_filter_prompt: str
     mention_keywords: list[str] = Field(default_factory=list)
     whitelist_keywords: list[str]

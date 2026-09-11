@@ -144,10 +144,14 @@ async def apply_to_post(
     else:
         comment_text, script = await build_comment(db, campaign, post, _ai_service())
         if not comment_text:
-            raise HTTPException(
-                status_code=422,
-                detail="Không sinh được comment — kiểm tra kịch bản hoặc OpenAI API key.",
-            )
+            if not getattr(campaign, "ai_comments_enabled", False):
+                detail = (
+                    "Chiến dịch đang tắt tính năng AI comment và chưa có kịch bản Spintax hợp lệ. "
+                    "Vui lòng thêm kịch bản trong tab Kịch bản hoặc tự nhập nội dung bình luận."
+                )
+            else:
+                detail = "Không sinh được comment — kiểm tra kịch bản hoặc OpenAI API key."
+            raise HTTPException(status_code=422, detail=detail)
 
     action = await queue_comment(
         db, campaign, post, comment_text, script, clone_id=payload.clone_id
