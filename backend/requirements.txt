@@ -17,9 +17,12 @@ PyJWT==2.13.0
 bcrypt==5.0.0
 cryptography==46.0.4
 
-# --- Hang doi nen ---
+# --- Hang doi nen (che do SaaS: Celery + Redis) ---
 celery==5.6.3
 redis==8.1.0
+
+# --- Lich + hang doi nen in-process (che do desktop, xem RUN_MODE) ---
+apscheduler==3.11.3
 
 # --- HTTP client (Telegram, proxy health, OpenAI) ---
 httpx==0.28.1

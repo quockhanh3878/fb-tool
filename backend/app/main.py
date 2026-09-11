@@ -31,7 +31,17 @@ async def lifespan(app: FastAPI):
     # SQLite (dev/test) tự tạo bảng; PostgreSQL dùng Alembic để có lịch sử migration.
     if "sqlite" in settings.database_url:
         await init_models()
+
+    if settings.run_mode == "desktop":
+        from app.workers.scheduler import start_scheduler, stop_scheduler
+
+        start_scheduler()
+
     yield
+
+    if settings.run_mode == "desktop":
+        await stop_scheduler()
+
     await dispose_engine()
 
 

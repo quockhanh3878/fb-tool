@@ -1641,6 +1641,45 @@ async def run_api_tests(client: httpx.AsyncClient) -> None:
     for cid_item in (scout_id, shooter_id, poster_id, all_id):
         await client.delete(f"/api/clones/{cid_item}", headers=auth)
 
+    section("14g. Che do desktop - SerialJobQueue tuan tu")
+    from app.workers.job_queue import SerialJobQueue
+
+    _q = SerialJobQueue()
+    _order: list[int] = []
+    _running = {"count": 0, "max": 0}
+
+    async def _slow_job(n: int) -> None:
+        _running["count"] += 1
+        _running["max"] = max(_running["max"], _running["count"])
+        await asyncio.sleep(0.05)
+        _order.append(n)
+        _running["count"] -= 1
+
+    _q.start()
+    for _n in range(3):
+        await _q.enqueue(lambda n=_n: _slow_job(n))
+    await asyncio.sleep(0.3)
+    await _q.stop()
+    check("SerialJobQueue chay dung thu tu", _order == [0, 1, 2], str(_order))
+    check("SerialJobQueue khong bao gio chay song song 2 job",
+          _running["max"] == 1, str(_running["max"]))
+
+    _q2 = SerialJobQueue()
+
+    async def _boom() -> None:
+        raise RuntimeError("job hong")
+
+    async def _after() -> None:
+        _order.append(99)
+
+    _q2.start()
+    await _q2.enqueue(_boom)
+    await _q2.enqueue(_after)
+    await asyncio.sleep(0.1)
+    await _q2.stop()
+    check("SerialJobQueue: 1 job loi khong giet hang doi, job sau van chay",
+          99 in _order, str(_order))
+
 
 def run_unit_tests() -> None:
     """Test thuần logic — không cần HTTP."""

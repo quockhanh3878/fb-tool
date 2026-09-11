@@ -119,7 +119,7 @@ Bộ test hiện có (chạy **hoàn toàn offline**, không cần Facebook / Op
 .venv\Scripts\python.exe commhunter/tests/test_pipeline.py    # 116 assertion — pipeline CLI, anti-ban, hồi quy nợ kỹ thuật
 .venv\Scripts\python.exe commhunter/tests/test_templates.py   # 8 assertion — kho mẫu comment, chống lặp lời
 .venv\Scripts\python.exe commhunter/tests/test_browser.py     # 23 assertion — vân tay + cấu hình trình duyệt (thêm --live để mở Chrome thật)
-.venv\Scripts\python.exe backend/tests/test_api.py            # 314 assertion — path/operation, cách ly đa khách, quota, state machine, đăng bài, mode treo, preflight
+.venv\Scripts\python.exe backend/tests/test_api.py            # 317 assertion — path/operation, cách ly đa khách, quota, state machine, đăng bài, mode treo, preflight, SerialJobQueue desktop
 cd frontend; npx tsc --noEmit                                 # TypeScript strict, 0 lỗi
 cd frontend; npx next build                                   # 13 route, 0 lỗi
 ```

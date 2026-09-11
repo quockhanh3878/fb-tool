@@ -23,6 +23,11 @@ class Settings(BaseSettings):
     app_version: str = "2.0.0"
     debug: bool = False
 
+    # "saas" (mặc định, hiện tại): Celery+Redis xử lý nền, nhiều tiến trình.
+    # "desktop": APScheduler + SerialJobQueue chạy ngay trong tiến trình API
+    # (xem app/workers/scheduler.py) — dùng cho app đóng gói chạy 1 máy/1 khách.
+    run_mode: str = "saas"
+
     # ── Database ────────────────────────────────────────────────────────
     # Dev/test dùng SQLite; production dùng PostgreSQL:
     #   postgresql+asyncpg://commhunter:pass@db:5432/commhunter
