@@ -1,6 +1,6 @@
 # Đóng gói CommHunter AI thành app desktop chạy trên máy khách
 
-> Cập nhật: 11/09/2026. Trạng thái: Giai đoạn 1/6 — Xong (có mã chạy được + test). Giai đoạn 2-5 — Chưa làm.
+> Cập nhật: 11/09/2026. Trạng thái: Giai đoạn 1-2/6 — Xong (có mã chạy được + test). Giai đoạn 3-5 — Chưa làm.
 
 ## Context
 
@@ -42,19 +42,30 @@ Electron App (khách double-click icon)
 - Test: `backend/tests/test_api.py` mục 14g (3 assertion) — `SerialJobQueue` chạy đúng thứ tự, không bao giờ 2 job chạy song song, 1 job lỗi không giết hàng đợi. Verify thủ công: `RUN_MODE=desktop` khởi động app → 7 job đăng ký đúng tên, `/health` 200, job_queue worker sống; `RUN_MODE` mặc định (không set) → hành vi SaaS cũ không đổi.
 - Kiểm chứng: `backend/tests/test_api.py` **317/317 PASS** (314 + 3 mới).
 
-## B-E. Chưa làm (Giai đoạn 2-6)
+## B. Desktop config — seed user + auto-login + màn Cài đặt [ĐÃ XONG]
 
-Xem lịch sử quyết định gốc trong session-snapshot 2026-09-11 (mục "Kiến trúc mới" đầy đủ + rủi ro chưa chốt) để tiếp tục:
-- Giai đoạn 2 — Desktop config: SQLite mặc định + seed user mặc định + auto-login (`/auth/desktop-session`) + `app_settings` (bảng key-value cho OpenAI key/Telegram token nhập qua UI, migration mới **phải là `0006`** vì `0005_ai_comments_optional.py` đã tồn tại) + cookie encryption key sinh 1 lần lưu bền (bug cần vá — hiện tự sinh tạm RAM khi rỗng).
+- `backend/app/models/app_setting.py` (mới) — bảng key-value `app_settings` (migration `0006_app_settings.py`, nối sau `0005_ai_comments_optional.py`).
+- `backend/app/services/app_settings_service.py` (mới) — `get_value`/`set_value`; `ensure_cookie_key` sinh 1 lần + lưu bền (vá xong rủi ro #2: trước đây tự sinh tạm RAM khi rỗng); `apply_to_runtime_settings` nạp OpenAI key/Telegram token/cookie key từ DB vào `Settings` singleton — CHỈ dùng khi `RUN_MODE=desktop` (1 máy/1 khách, an toàn ghi đè singleton toàn tiến trình; SaaS đa khách KHÔNG được dùng module này).
+- `backend/app/services/desktop_service.py` (mới) — `ensure_desktop_user`: seed đúng 1 user cố định (`khach@local.commhunter`) + subscription gói Studio hạn 100 năm (không chặn quota), idempotent.
+- `backend/app/routers/auth.py` — `POST /api/auth/desktop-session`: auto-login, cấp token ngay không cần mật khẩu. 404 ở chế độ SaaS.
+- `backend/app/routers/settings.py` (mới) — `GET/PUT /api/settings`: màn "Cài đặt" cho OpenAI key/Telegram token, không trả lại giá trị thật (chỉ báo đã cấu hình hay chưa). 404 ở chế độ SaaS. PUT ghi DB + áp dụng ngay vào `Settings` singleton (không cần restart).
+- `backend/app/main.py` — `lifespan()` khi `RUN_MODE=desktop`: mở 1 DB session gọi `apply_to_runtime_settings` TRƯỚC khi bật scheduler/nhận request đầu tiên (đặc biệt trước lần gọi `services/crypto.py` đầu tiên).
+- Test: `backend/tests/test_api.py` mục 14h (11 assertion) — 404 ở SaaS, auto-login idempotent (gọi lại vẫn ra đúng 1 user), GET/PUT settings, PUT áp dụng ngay không cần restart, cookie key sinh 1 lần không đổi. Kiểm đột biến 2 điểm (bỏ early-return `ensure_cookie_key`, đảo điều kiện gate `run_mode`) đều bắt đỏ đúng chỗ, đã hoàn tác.
+- Kiểm chứng: `alembic upgrade head` → `alembic check` không drift → `downgrade base` → `upgrade head` lại sạch. `backend/tests/test_api.py` **328/328 PASS** (317 + 11 mới).
+
+## C-E. Chưa làm (Giai đoạn 3-6)
+
 - Giai đoạn 3 — Electron shell tối thiểu (`desktop/main.js`, chưa bundle).
-- Giai đoạn 4 — Đóng gói thật (bundle `.venv`, Next standalone, electron-builder NSIS).
+- Giai đoạn 4 — Đóng gói thật (bundle `.venv`, Next standalone, electron-builder NSIS). `commhunter/browser_manager.py` `channel="chrome"` chưa verify trên máy sạch có cần `playwright install` không.
 - Giai đoạn 5 — Tài liệu hoá first-run cho khách.
+- Frontend chưa có màn "Cài đặt" gọi `/api/settings`, chưa có logic auto-login gọi `/api/auth/desktop-session` (API đã sẵn sàng, chỉ thiếu UI).
 
-### Rủi ro / giả định chưa chốt (cần anh Ber xác nhận trước khi làm Giai đoạn 2 trở đi)
+### Rủi ro / giả định chưa chốt (cần anh Ber xác nhận trước khi làm Giai đoạn 3 trở đi)
 1. Bỏ `self.retry()` tức thời (giờ chỉ thử lại ở chu kỳ dispatch kế tiếp 30-60s) — SLA chấp nhận được không?
-2. Cookie encryption key phải sinh 1 lần + lưu bền cho desktop (khác RAM tạm hiện tại).
+2. ~~Cookie encryption key phải sinh 1 lần + lưu bền cho desktop~~ — ĐÃ VÁ (Giai đoạn 2, `ensure_cookie_key`).
 3. `playwright install` (driver nội bộ) — cần verify trên máy Windows sạch chưa từng cài.
 4. 1 hàng đợi tuần tự TOÀN CỤC (không khoá riêng theo clone) — nhiều clone chạy lần lượt, chậm hơn Celery pool.
 5. Giữ code path Postgres/`asyncpg` không xoá — cần `requirements-desktop.txt` riêng nếu muốn giảm dung lượng installer.
 6. Cổng nội bộ cố định 8877/3100 — chấp nhận hard-code hay cần dò cổng trống?
 7. Không code-signing → SmartScreen cảnh báo "Unknown publisher".
+8. User desktop seed (`khach@local.commhunter`) dùng gói Studio hạn 100 năm để không chặn quota — mô hình billing hiện tại (Starter/Pro/Studio trả phí) không còn ý nghĩa khi bán app desktop 1 lần; cần anh Ber chốt mô hình kinh doanh cho bản desktop (bán đứt file cài đặt? vẫn thu phí định kỳ qua license key riêng?) trước khi đụng tới `services/plans.py`/`routers/billing.py`.

@@ -1680,6 +1680,84 @@ async def run_api_tests(client: httpx.AsyncClient) -> None:
     check("SerialJobQueue: 1 job loi khong giet hang doi, job sau van chay",
           99 in _order, str(_order))
 
+    section("14h. Che do desktop - auto-login + man Cai dat")
+    from app.config import get_settings as _get_settings
+
+    _settings = _get_settings()
+
+    r = await client.post("/api/auth/desktop-session")
+    check("SaaS mode (mac dinh): /desktop-session tra 404", r.status_code == 404, r.text)
+    r = await client.get("/api/settings", headers=auth)
+    check("SaaS mode: /api/settings tra 404", r.status_code == 404, r.text)
+
+    _settings.run_mode = "desktop"
+    try:
+        r1 = await client.post("/api/auth/desktop-session")
+        check("Desktop mode: /desktop-session tra token", r1.status_code == 200, r1.text)
+        desktop_token1 = r1.json()["access_token"]
+
+        r2 = await client.post("/api/auth/desktop-session")
+        desktop_token2 = r2.json()["access_token"]
+        desktop_auth = {"Authorization": f"Bearer {desktop_token1}"}
+        me1 = await client.get("/api/auth/me", headers=desktop_auth)
+        me2 = await client.get(
+            "/api/auth/me", headers={"Authorization": f"Bearer {desktop_token2}"}
+        )
+        check(
+            "Desktop mode: goi lai desktop-session tra dung 1 user (idempotent)",
+            me1.json()["id"] == me2.json()["id"],
+            f"{me1.json()} vs {me2.json()}",
+        )
+
+        r3 = await client.get("/api/settings", headers=desktop_auth)
+        check("Desktop mode: GET /api/settings 200", r3.status_code == 200, r3.text)
+        check(
+            "Desktop mode: chua cau hinh gi -> openai/telegram deu chua set",
+            r3.json() == {"openai_api_key_set": False, "telegram_bot_token_set": False},
+            r3.text,
+        )
+
+        r4 = await client.put(
+            "/api/settings", json={"openai_api_key": "sk-test-123"}, headers=desktop_auth
+        )
+        check("Desktop mode: PUT /api/settings luu openai key", r4.status_code == 200, r4.text)
+        check(
+            "Desktop mode: openai_api_key_set=True sau khi luu",
+            r4.json()["openai_api_key_set"] is True,
+            r4.text,
+        )
+        check(
+            "Desktop mode: PUT ap dung ngay vao Settings singleton (khong can restart)",
+            _settings.openai_api_key == "sk-test-123",
+            _settings.openai_api_key,
+        )
+
+        from app.database import get_session_factory as _get_session_factory
+        from app.services.app_settings_service import (
+            apply_to_runtime_settings,
+            ensure_cookie_key,
+        )
+
+        async with _get_session_factory()() as _db:
+            key1 = await ensure_cookie_key(_db)
+            key2 = await ensure_cookie_key(_db)
+        check(
+            "Desktop mode: khoa ma hoa cookie sinh 1 lan, lan sau khong doi",
+            key1 == key2 and bool(key1),
+            key1,
+        )
+
+        _settings.cookie_encryption_key = ""
+        async with _get_session_factory()() as _db:
+            await apply_to_runtime_settings(_db)
+        check(
+            "Desktop mode: apply_to_runtime_settings nap khoa cookie da luu vao Settings",
+            _settings.cookie_encryption_key == key1,
+            _settings.cookie_encryption_key,
+        )
+    finally:
+        _settings.run_mode = "saas"
+
 
 def run_unit_tests() -> None:
     """Test thuần logic — không cần HTTP."""

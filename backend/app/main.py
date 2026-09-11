@@ -11,7 +11,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import get_settings
-from app.database import dispose_engine, init_models
+from app.database import dispose_engine, get_session_factory, init_models
 from app.routers import (
     auth,
     billing,
@@ -20,6 +20,7 @@ from app.routers import (
     health,
     mentions,
     posts,
+    settings as settings_router,
     stats,
     telegram_webhook,
 )
@@ -33,7 +34,13 @@ async def lifespan(app: FastAPI):
         await init_models()
 
     if settings.run_mode == "desktop":
+        from app.services.app_settings_service import apply_to_runtime_settings
         from app.workers.scheduler import start_scheduler, stop_scheduler
+
+        # Nạp cấu hình DB (OpenAI key, Telegram token, khoá mã hoá cookie bền)
+        # vào Settings singleton TRƯỚC khi bật scheduler / nhận request đầu tiên.
+        async with get_session_factory()() as db:
+            await apply_to_runtime_settings(db)
 
         start_scheduler()
 
@@ -75,6 +82,7 @@ def create_app() -> FastAPI:
         health,
         billing,
         telegram_webhook,
+        settings_router,
     ):
         app.include_router(module.router)
 

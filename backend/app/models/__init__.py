@@ -1,4 +1,5 @@
-"""Nạp toàn bộ ORM model để SQLAlchemy metadata biết đủ 11 bảng."""
+"""Nạp toàn bộ ORM model để SQLAlchemy metadata biết đủ bảng."""
+from app.models.app_setting import AppSetting
 from app.models.campaign import BumpSchedule, Campaign, CampaignGroup, CommentScript
 from app.models.clone_account import AccountHealthLog, CloneAccount, Proxy
 from app.models.mention import Mention
@@ -19,4 +20,5 @@ __all__ = [
     "CommentAction",
     "PostPublish",
     "Mention",
+    "AppSetting",
 ]

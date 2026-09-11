@@ -81,7 +81,7 @@ fb-tool/
 │   │   └── workers/                          # Celery: scout, shooter, bump,
 │   │                                         #   warm-up, health-check
 │   ├── alembic/                              # Migration (0001 = 11 bảng, 0003 = hộp thư Nhắc tới)
-│   ├── tests/test_api.py                     # 317 assertion offline (SQLite)
+│   ├── tests/test_api.py                     # 328 assertion offline (SQLite)
 │   ├── requirements.txt / Dockerfile / docker-compose.yaml
 │
 ├── frontend/                                 # DASHBOARD Next.js 16 + Tailwind 4
@@ -174,7 +174,7 @@ cd backend
 $env:DATABASE_URL = "sqlite+aiosqlite:///./data/commhunter_api.db"
 ..\.venv\Scripts\alembic.exe upgrade head
 ..\.venv\Scripts\uvicorn.exe app.main:app --reload   # http://localhost:8000/docs
-..\.venv\Scripts\python.exe tests\test_api.py        # 317/317 PASS, offline
+..\.venv\Scripts\python.exe tests\test_api.py        # 328/328 PASS, offline
 
 cd ..\frontend
 npm install; npm run dev                             # http://localhost:3000
@@ -203,7 +203,7 @@ Chi tiết thiết kế: [DELIVERY_STATUS §4b](docs/plans/DELIVERY_STATUS.md).
 | Bộ test | Phạm vi | Kết quả |
 |---|---|---|
 | `commhunter/tests/test_pipeline.py` | Phase 1: pipeline CLI, anti-ban, hồi quy nợ kỹ thuật | **116/116 PASS** |
-| `backend/tests/test_api.py` | Phase 2-4: 68 path / 86 operation, cách ly đa khách, quota, máy trạng thái, worker, xoay vòng & chống trùng, đăng bài thật (E2E backend trên burner), preflight nick, hộp thư Nhắc tới, SerialJobQueue chế độ desktop | **317/317 PASS** |
+| `backend/tests/test_api.py` | Phase 2-4: 68 path / 86 operation, cách ly đa khách, quota, máy trạng thái, worker, xoay vòng & chống trùng, đăng bài thật (E2E backend trên burner), preflight nick, hộp thư Nhắc tới, SerialJobQueue chế độ desktop | **328/328 PASS** |
 | `commhunter/tests/test_templates.py` | Kho mẫu comment, chống lặp lời | **8/8 PASS** |
 | `commhunter/tests/test_browser.py` | Vân tay + cấu hình trình duyệt | **23/23 PASS** |
 | `npx next build` (frontend) | 15 route, TypeScript strict | **0 lỗi** |

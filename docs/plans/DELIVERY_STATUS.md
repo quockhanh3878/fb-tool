@@ -14,7 +14,7 @@
 | Phase | Task theo plan | Đã có mã + test | Chặn bởi yếu tố ngoài | Ghi chú |
 |---|---|---|---|---|
 | **Phase 1 — MVP Script** | 11 | 10 | 1 (Sprint 3: chạy thật) | 116/116 assertion PASS |
-| **Phase 2 — Dashboard** | 19 | 18 | 1 (deploy VPS + SSL) | 317/317 assertion PASS; đăng bài E2E đường backend đã chạy thật trên burner |
+| **Phase 2 — Dashboard** | 19 | 18 | 1 (deploy VPS + SSL) | 328/328 assertion PASS; đăng bài E2E đường backend đã chạy thật trên burner |
 | **Phase 3 — Anti-Ban** | 6 | 6 | — (ngưỡng cần hiệu chỉnh thật) | Logic thuần, test offline |
 | **Phase 4 — Thương mại** | 7 | 5 | 2 (cổng thanh toán, admin dashboard) | Xem §5 |
 
@@ -22,12 +22,12 @@
 
 ```
 commhunter/tests/test_pipeline.py   →  116 PASS / 0 FAIL
-backend/tests/test_api.py           →  317 PASS / 0 FAIL (14g: SerialJobQueue che do desktop)
+backend/tests/test_api.py           →  328 PASS / 0 FAIL (14g: SerialJobQueue, 14h: seed user + app_settings che do desktop)
 frontend: npx tsc --noEmit          →    0 lỗi
 frontend: npx next build            →    0 lỗi TypeScript, 15 route
 API surface (openapi.json)          →   68 path / 86 operation
 docker compose config --services    →    db, redis, api, worker, beat  (đủ 5)
-alembic upgrade head / downgrade    →    11 bảng + 0002 (xoay vòng) + 0003 (Nhắc tới) + 0004 (Track A: post_publishes + daily_post_*) + 0005 (tuỳ chọn AI comment: campaigns.ai_comments_enabled), lên xuống sạch, `alembic check` không drift
+alembic upgrade head / downgrade    →    11 bảng + 0002 (xoay vòng) + 0003 (Nhắc tới) + 0004 (Track A: post_publishes + daily_post_*) + 0005 (tuỳ chọn AI comment) + 0006 (app_settings che do desktop), lên xuống sạch, `alembic check` không drift
 ```
 
 ---
@@ -180,7 +180,7 @@ Xem `docs/plans/desktop_packaging.md`. Mục tiêu: mỗi khách chạy toàn b�
 | Giai đoạn | Trạng thái | Ghi chú |
 |---|---|---|
 | 1 — Thay Celery+Redis bằng APScheduler + SerialJobQueue | Xong | `backend/app/workers/{job_queue,scheduler}.py` mới; `RUN_MODE=desktop` bật trong `main.py`, chế độ SaaS cũ không đổi hành vi. Test mục 14g (3 assertion) |
-| 2 — Desktop config (seed user, app_settings, cookie key bền) | Chưa làm | — |
+| 2 — Desktop config (seed user, app_settings, cookie key bền) | Xong | `desktop_service.ensure_desktop_user`, `app_settings_service.py`, router `settings.py`, `POST /api/auth/desktop-session`; migration `0006_app_settings.py`. Test mục 14h (11 assertion) |
 | 3 — Electron shell tối thiểu | Chưa làm | — |
 | 4 — Đóng gói thật (bundle `.venv`, NSIS) | Chưa làm | — |
 | 5 — Tài liệu first-run cho khách | Chưa làm | — |

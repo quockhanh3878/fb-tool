@@ -30,6 +30,7 @@ from app.security import (
     hash_password,
     verify_password,
 )
+from app.services.desktop_service import ensure_desktop_user
 from app.services.plans import DEFAULT_PLAN, get_plan
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
@@ -99,6 +100,16 @@ async def login(payload: LoginRequest, db: AsyncSession = Depends(get_db)):
         raise HTTPException(status_code=401, detail="Email hoặc mật khẩu không đúng")
     if not user.is_active:
         raise HTTPException(status_code=403, detail="Tài khoản đã bị khoá")
+    return _token_pair(user)
+
+
+@router.post("/desktop-session", response_model=TokenPair)
+async def desktop_session(db: AsyncSession = Depends(get_db)):
+    """Auto-login cho chế độ desktop (RUN_MODE=desktop): 1 máy = 1 user, khách
+    không cần màn đăng nhập. Ở chế độ SaaS endpoint này không tồn tại (404)."""
+    if get_settings().run_mode != "desktop":
+        raise HTTPException(status_code=404, detail="Not Found")
+    user = await ensure_desktop_user(db)
     return _token_pair(user)
 
 
