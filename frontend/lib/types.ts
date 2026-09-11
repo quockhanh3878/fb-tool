@@ -39,6 +39,8 @@ export interface Campaign {
   service_strengths: string;
   landing_page_note: string;
   ai_filter_prompt: string;
+  /** Từ khóa thương hiệu cho hộp thư "Nhắc tới" — rỗng thì tính năng tắt. */
+  mention_keywords: string[];
   whitelist_keywords: string[];
   blacklist_keywords: string[];
   min_relevance_score: number;
@@ -134,12 +136,16 @@ export interface PostPublishResult {
   group_id: string;
   group_name: string;
   group_url?: string;
-  post_url: string;
+  // null khi nhóm chưa đăng được, hoặc đăng xong nhưng không bóc được permalink.
+  post_url: string | null;
   clone_id: string;
   clone_name: string;
-  published_at: string;
-  status: "success" | "failed";
-  error?: string;
+  published_at: string | null;
+  // "published" = đăng + có link; "published_no_url" = đăng nhưng thiếu link;
+  // "failed" = không đăng được; "skipped_quota" = bỏ qua vì hết hạn mức ngày.
+  // ("success" giữ lại để tương thích dữ liệu cũ.)
+  status: "published" | "published_no_url" | "failed" | "skipped_quota" | "success";
+  error?: string | null;
 }
 
 export interface PostPublish {
@@ -183,6 +189,27 @@ export interface Post {
 
 export interface PostList {
   items: Post[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+export interface Mention {
+  id: string;
+  campaign_id: string;
+  campaign_group_id: string | null;
+  discovered_post_id: string | null;
+  matched_keywords: string[];
+  author_name: string;
+  content_text: string;
+  post_url: string;
+  status: "new" | "read" | "archived";
+  discovered_at: string;
+  seen_at: string | null;
+}
+
+export interface MentionList {
+  items: Mention[];
   total: number;
   limit: number;
   offset: number;
@@ -367,4 +394,5 @@ export interface IngestResult {
   notified: number;
   queued: number;
   skipped: number;
+  mentions: number;
 }

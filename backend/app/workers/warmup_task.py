@@ -19,9 +19,9 @@ from app.services.notification_service import NotificationService
 from app.services.warmup_service import WarmupService
 from app.workers.browser_runtime import (
     BrowserRuntimeUnavailable,
+    _maybe_write_cookies,
     build_runtime_config,
     load_phase1_modules,
-    write_cookie_file,
 )
 from app.workers.celery_app import celery_app, run_async
 
@@ -50,10 +50,9 @@ async def browser_executor(clone: CloneAccount, step) -> bool:
         cookies = decrypt_cookies(clone.cookie_data_encrypted)
     except Exception:
         cookies = None
-    if cookies:
-        write_cookie_file(clone, cookies)
 
     config = build_runtime_config(clone, [])
+    _maybe_write_cookies(config, clone, cookies)
     manager = BrowserManager(config)
     account = config.accounts["scout"]
     try:

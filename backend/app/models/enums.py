@@ -86,6 +86,14 @@ class PostStatus(StrEnum):
     EXPIRED = "expired"
 
 
+class MentionStatus(StrEnum):
+    """Hộp thư 'Nhắc tới' — vòng đời một lượt nhắc tên thương hiệu."""
+
+    NEW = "new"
+    READ = "read"
+    ARCHIVED = "archived"
+
+
 class CommentStatus(StrEnum):
     QUEUED = "queued"
     IN_PROGRESS = "in_progress"

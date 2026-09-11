@@ -116,10 +116,10 @@ Ràng buộc vận hành: đọc schema tool trước khi gọi MCP (không đo�
 Bộ test hiện có (chạy **hoàn toàn offline**, không cần Facebook / OpenAI / Docker / mạng):
 
 ```bash
-.venv\Scripts\python.exe commhunter/tests/test_pipeline.py    # 104 assertion — pipeline CLI, anti-ban, hồi quy nợ kỹ thuật
+.venv\Scripts\python.exe commhunter/tests/test_pipeline.py    # 116 assertion — pipeline CLI, anti-ban, hồi quy nợ kỹ thuật
 .venv\Scripts\python.exe commhunter/tests/test_templates.py   # 8 assertion — kho mẫu comment, chống lặp lời
 .venv\Scripts\python.exe commhunter/tests/test_browser.py     # 23 assertion — vân tay + cấu hình trình duyệt (thêm --live để mở Chrome thật)
-.venv\Scripts\python.exe backend/tests/test_api.py            # 243 assertion — 51 path/65 operation, cách ly đa khách, quota, state machine
+.venv\Scripts\python.exe backend/tests/test_api.py            # 314 assertion — path/operation, cách ly đa khách, quota, state machine, đăng bài, mode treo, preflight
 cd frontend; npx tsc --noEmit                                 # TypeScript strict, 0 lỗi
 cd frontend; npx next build                                   # 13 route, 0 lỗi
 ```

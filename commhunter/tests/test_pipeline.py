@@ -174,6 +174,7 @@ check("chan nut Like khong dau", not is_safe_hover_target("https://fb.com", "lik
 check("cho qua link bai viet hop le", is_safe_hover_target("https://facebook.com/groups/123/posts/456", "Xem bài viết của A", "2 giờ trước"))
 
 print("\n=== 9. Verify 3 chieu & Pick Verify Phrase (N-02 + N-03) ===")
+import shooter_worker as shooter_mod
 from shooter_worker import _pick_verify_phrase, ShooterWorker
 
 check("pick phrase comment ngan", _pick_verify_phrase("Minh can viet gap") == "Minh can viet gap")
@@ -245,6 +246,196 @@ check("O nhap trong + khong co text ngoai -> SHADOWBANNED", status3 == CommentSt
 # Case 4: Lỗi ngoại lệ trong verify -> FAILED (hồi quy N-03)
 status4 = asyncio.run(shooter_test._verify_comment(BrokenPage(), box_empty, long_cmt))
 check("Loi ngoai le -> FAILED (hoi quy N-03, khong con assume success)", status4 == CommentStatus.FAILED)
+
+# ── HỒI QUY publish_post: permalink + xác nhận bài lên (soi DOM thật 2026-09-10) ──
+# Bug: FB đời mới giấu permalink khỏi href -> _find_published_permalink phải
+# click mốc thời gian rồi đọc URL; _clean_permalink rút URL sạch khỏi tracking.
+_cp = ShooterWorker._clean_permalink
+check(
+    "clean_permalink: /groups/<id>/posts/<id> + tracking -> URL sach",
+    _cp(
+        "https://www.facebook.com/groups/1042987808508567/posts/1042994141841267"
+        "?__cft__[0]=AbCdEf#?cbb"
+    )
+    == "https://www.facebook.com/groups/1042987808508567/posts/1042994141841267/",
+)
+check(
+    "clean_permalink: URL da sach -> giu nguyen (chuan hoa dau '/')",
+    _cp("https://www.facebook.com/groups/123/posts/456/")
+    == "https://www.facebook.com/groups/123/posts/456/",
+)
+check(
+    "clean_permalink: URL feed nhom (khong co /posts/) -> None",
+    _cp("https://www.facebook.com/groups/1042987808508567?__cft__[0]=x#?ifb") is None,
+)
+check("clean_permalink: chuoi rong -> None", _cp("") is None)
+
+# Bug: _post_submitted_ok đếm mọi [role=dialog] -> luôn FAILED giả vì FB giữ
+# sẵn dialog thông báo. Giờ chỉ soi ô soạn bài.
+class _FakeSubmitPage:
+    def __init__(self, body="", composer_visible=False):
+        self._body = body
+        self._composer_visible = composer_visible
+
+    async def text_content(self, _sel):
+        return self._body
+
+    async def wait_for_timeout(self, _ms):
+        return None
+
+    async def query_selector(self, _sel):
+        if not self._composer_visible:
+            return None
+        class _El:
+            async def is_visible(_self):
+                return True
+        return _El()
+
+check(
+    "_post_submitted_ok: composer da dong -> True (khong con FAILED gia)",
+    asyncio.run(shooter_test._post_submitted_ok(_FakeSubmitPage(body="abc"))) is True,
+)
+# Ngưỡng poll = 0 để test không phải chờ thật; nhánh logic vẫn nguyên vẹn.
+_orig_confirm_ms = shooter_mod.POST_SUBMIT_CONFIRM_TIMEOUT_MS
+shooter_mod.POST_SUBMIT_CONFIRM_TIMEOUT_MS = 0
+check(
+    "_post_submitted_ok: composer con mo -> False",
+    asyncio.run(
+        shooter_test._post_submitted_ok(_FakeSubmitPage(composer_visible=True))
+    )
+    is False,
+)
+shooter_mod.POST_SUBMIT_CONFIRM_TIMEOUT_MS = _orig_confirm_ms
+check(
+    "_post_submitted_ok: co cum tu thanh cong -> True du composer con mo",
+    asyncio.run(
+        shooter_test._post_submitted_ok(
+            _FakeSubmitPage(body="Bài viết của bạn đã được đăng", composer_visible=True)
+        )
+    )
+    is True,
+)
+
+# ── HỒI QUY delete_own_post: rollback/cleanup bài mình đã đăng ──────────────
+# DOM thật 2026-09-10: nut menu "Hanh dong doi voi bai viet nay cua <nick>"
+# -> menu item "Xoa bai viet" -> dialog xac nhan -> nut "Xoa" (khop tuyet doi).
+class _DelBtn:
+    def __init__(self, page, label):
+        self._page = page
+        self._label = label
+    async def inner_text(self):
+        return self._label
+    async def _do(self):
+        # Chỉ nút xác nhận thật mới xoá bài; bấm "Hủy" thì không.
+        if self._label in ("Xóa", "Xoá", "Chuyển"):
+            self._page.deleted = True
+    async def click(self):
+        await self._do()
+    async def evaluate(self, _js):
+        await self._do()
+
+class _DelMenuItem:
+    def __init__(self, label):
+        self._label = label
+    async def inner_text(self):
+        return self._label
+    async def click(self):
+        pass
+    async def evaluate(self, _js):
+        pass
+
+class _DelMenu:
+    async def query_selector_all(self, _sel):
+        return [_DelMenuItem("Chỉnh sửa bài viết"), _DelMenuItem("Xóa bài viết")]
+
+class _DelDialog:
+    def __init__(self, page):
+        self._page = page
+    async def inner_text(self):
+        return "Xóa bài viết vĩnh viễn?\nBạn có chắc chắn muốn xóa bài viết này không?"
+    async def query_selector_all(self, _sel):
+        return [_DelBtn(self._page, "Hủy"), _DelBtn(self._page, "Xóa")]
+
+class _DelMenuBtn:
+    async def evaluate(self, _js):
+        pass
+
+class _FakeDeletePostPage:
+    def __init__(self, has_menu=True, has_dialog=True):
+        self._has_menu = has_menu
+        self._has_dialog = has_dialog
+        self.deleted = False
+        self.url = ""
+    async def goto(self, url, **k):
+        self.url = url
+    async def wait_for_timeout(self, ms):
+        pass
+    async def text_content(self, _sel):
+        return "Nội dung không khả dụng" if self.deleted else "Bài viết vẫn bình thường ở đây"
+    async def query_selector(self, sel):
+        if 'aria-haspopup="menu"' in sel:
+            return _DelMenuBtn() if self._has_menu else None
+        if 'role="menu"' in sel:
+            return _DelMenu()
+        return None
+    async def query_selector_all(self, sel):
+        if 'role="dialog"' in sel and self._has_dialog:
+            return [_DelDialog(self)]
+        return []
+
+_ok_page = _FakeDeletePostPage()
+check(
+    "delete_own_post: menu -> item Xoa -> dialog -> nut Xoa -> True",
+    asyncio.run(shooter_test.delete_own_post(_ok_page, "https://facebook.com/groups/1/posts/9/")) is True,
+)
+check(
+    "delete_own_post: khong thay nut menu -> False (fail an toan)",
+    asyncio.run(
+        shooter_test.delete_own_post(_FakeDeletePostPage(has_menu=False), "https://x/posts/1/")
+    )
+    is False,
+)
+check(
+    "delete_own_post: post_url rong -> False",
+    asyncio.run(shooter_test.delete_own_post(_FakeDeletePostPage(), "")) is False,
+)
+
+# HỒI QUY 2026-09-11: trang permalink FB chèn bài "được đề xuất" cùng nút
+# "Hành động đối với bài viết này..." -> _open_own_post_menu phải chọn ĐÚNG nút
+# có tên tài khoản đang đăng nhập, không bấm nút đầu tiên (bài người khác).
+class _NamedBtn:
+    def __init__(self, label, sink):
+        self._label = label
+        self._sink = sink
+    async def evaluate(self, _js):
+        self._sink.append(self._label)
+
+class _MultiPostPage:
+    def __init__(self):
+        self.clicked = []
+    async def query_selector(self, sel):
+        if 'của Toi Ngay Ban' in sel:
+            return _NamedBtn("mine", self.clicked)
+        if 'của ' in sel or 'by ' in sel:
+            return None
+        if 'aria-haspopup="menu"' in sel:  # nút khớp CHUNG -> bài người lạ
+            return _NamedBtn("stranger", self.clicked)
+        return None
+
+_mp = _MultiPostPage()
+check(
+    "_open_own_post_menu: co ten -> bam dung nut cua minh",
+    asyncio.run(shooter_test._open_own_post_menu(_mp, "Toi Ngay Ban")) is True
+    and _mp.clicked == ["mine"],
+    str(_mp.clicked),
+)
+_mp2 = _MultiPostPage()
+check(
+    "_open_own_post_menu: khong xac dinh ten -> roi ve nut khop chung",
+    asyncio.run(shooter_test._open_own_post_menu(_mp2, None)) is True
+    and _mp2.clicked == ["stranger"],
+    str(_mp2.clicked),
+)
 
 print("\n=== 10. Vong doi luot & DedupStore (N-04) ===")
 test_store_dir = tempfile.mkdtemp()

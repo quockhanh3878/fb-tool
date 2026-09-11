@@ -473,16 +473,27 @@ async def human_type(page, text: str, config: dict):
 16. Cập nhật daily_comment_count
 ```
 
-**Selector cần tìm ô comment (đa ngôn ngữ):**
-```python
-COMMENT_BOX_SELECTORS = [
-    '[aria-label*="Write a comment"][contenteditable="true"]',
-    '[aria-label*="Viết bình luận"][contenteditable="true"]',
-    '[aria-label*="Comment as"][contenteditable="true"]',
-    '[aria-label*="Bình luận với tư cách"][contenteditable="true"]',
-    'div[role="textbox"][contenteditable="true"]',
-]
-```
+**Selector cần tìm ô comment (đa ngôn ngữ):** xem `commhunter/constants.py:COMMENT_BOX_SELECTORS`.
+Đã bổ sung `[aria-label*="Viết câu trả lời"]` / `"Write an answer"` sau khi soi DOM thật
+10/09/2026 — group kiểu hỏi-đáp/thảo luận dùng nhãn "Viết câu trả lời…" thay vì
+"Viết bình luận…".
+
+**Chạy thật 10/09/2026** (nick phụ, CDP 9222, group "Hội BMW"): `post_comment(delete_after=True)`
+→ comment vào 1 bài trong nhóm bằng `[aria-label*="Viết bình luận"]`, verify 2 chiều =
+`SUCCESS`, `delete_comment` xoá sạch (menu "Chỉnh sửa hoặc xóa bình luận này" → "Xóa" →
+xác nhận). Đối chiếu lại feed: không còn comment test.
+
+**Đăng bài — chạy thật 10/09/2026** (group không kiểm duyệt, nick phụ là admin):
+`publish_post` ghi được thật; sửa 2 bug ở khâu xác nhận: (1) `_post_submitted_ok`
+không đếm mọi `[role="dialog"]` nữa (FB giữ sẵn dialog thông báo → FAILED giả) —
+chỉ soi ô soạn bài; (2) FB giấu permalink khỏi mọi `href` trong feed → thêm
+`_permalink_by_clicking_timestamp` (đánh dấu thẻ `<a>` mốc thời gian → click →
+đọc URL đích `/groups/<gid>/posts/<id>/` → `_clean_permalink`). Hồi quy:
+`test_pipeline.py` +7 assertion (nay 111).
+
+**11/09/2026** — `ShooterWorker.delete_own_post(page, post_url)`: xoá bài CHÍNH mình đã đăng, đường rollback / cleanup cho `publish_post`. DOM group thật 2026-09-10: nút menu `[aria-haspopup="menu"][aria-label*="Hành động đối với bài viết này"]` (JS `.click()` tránh overlay) → mục "Xóa bài viết" / "Chuyển vào thùng rác" → hộp thoại xác nhận → nút khớp tuyệt đối `Xóa`/`Xoá`/`Chuyển` (KHÔNG bắt tiêu đề "Xóa bài viết vĩnh viễn?" hay nút "Xác nhận"). Verify: mở lại permalink, khớp `POST_GONE_MARKERS`. Fail an toàn khi không khớp selector. Hằng số mới trong `constants.py`: `OWN_POST_MENU_SELECTORS`, `OWN_POST_DELETE_MENU_TEXTS`, `OWN_POST_DELETE_CONFIRM_HINTS`, `OWN_POST_DELETE_CONFIRM_BUTTON_TEXTS`, `POST_GONE_MARKERS`. `test_pipeline.py` +3 assertion (nay 114).
+
+**11/09/2026 — E2E đường backend Track A Item 3** (burner `1042987808508567`): sửa tiếp 2 bug lộ ra khi chạy `execute_publish` thật. (1) `_post_submitted_ok` giờ POLL tối đa `POST_SUBMIT_CONFIRM_TIMEOUT_MS` = 14s (hộp thoại đóng chậm có spinner → soi 1 lần báo `submit_not_confirmed` giả trong khi bài đã lên feed); bỏ cụm `"đã đăng"` trần khỏi `POST_SUCCESS_PHRASES`. (2) trang permalink FB chèn bài "được đề xuất" cùng nút "Hành động đối với bài viết này..." → `delete_own_post` bấm nhầm bài người khác → thêm `_open_own_post_menu` + `_current_account_name` (bóc tên tài khoản đang đăng nhập từ payload bootstrap qua `CURRENT_ACCOUNT_NAME_RE`, khớp `aria-label` "... của <tên>"; chỉ rơi về nút khớp chung khi không xác định được tên), `delete_own_post(page, post_url, author_name=None)`; `_click_menu_text` + `_confirm_delete_dialog` chuyển sang JS click (overlay chắn click chuột). `test_pipeline.py` +2 assertion (nay 116).
 
 **Acceptance Criteria:**
 - [ ] Comment thành công vào 1 bài viết thật trên Facebook (test với bài của chính mình)

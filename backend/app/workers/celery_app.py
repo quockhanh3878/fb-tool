@@ -24,6 +24,7 @@ celery_app = Celery(
         "app.workers.warmup_task",
         "app.workers.health_check_task",
         "app.workers.publisher_task",
+        "app.workers.preflight_task",
     ],
 )
 

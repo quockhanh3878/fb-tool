@@ -25,6 +25,8 @@ class Campaign(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     landing_page_note: Mapped[str] = mapped_column(Text, default="")
 
     ai_filter_prompt: Mapped[str] = mapped_column(Text, default="")
+    # Từ khoá thương hiệu cho hộp thư "Nhắc tới" — rỗng thì tính năng tắt.
+    mention_keywords: Mapped[list] = mapped_column(JSON, default=list)
     whitelist_keywords: Mapped[list] = mapped_column(JSON, default=list)
     blacklist_keywords: Mapped[list] = mapped_column(JSON, default=list)
     min_relevance_score: Mapped[float] = mapped_column(Float, default=0.7)

@@ -10,7 +10,10 @@ import {
   IconFacebook,
   IconPause,
   IconPlay,
+  IconRefresh,
+  IconSearch,
   IconSettings,
+  IconShieldCheck,
   IconSparkles,
   IconZap,
 } from "@/components/icons";
@@ -153,6 +156,7 @@ function SettingsTab({ campaign, onSaved }: { campaign: Campaign; onSaved: () =>
         service_strengths: form.service_strengths,
         landing_page_note: form.landing_page_note,
         ai_filter_prompt: form.ai_filter_prompt,
+        mention_keywords: form.mention_keywords ?? [],
         whitelist_keywords: form.whitelist_keywords,
         blacklist_keywords: form.blacklist_keywords,
         min_relevance_score: Number(form.min_relevance_score),
@@ -237,6 +241,20 @@ function SettingsTab({ campaign, onSaved }: { campaign: Campaign; onSaved: () =>
         </Field>
       </div>
 
+      <div className="mt-4">
+        <Field
+          label="Từ khóa nhắc tới thương hiệu"
+          hint="Scout gom bài nhắc tới các từ này vào Hộp thư Nhắc tới để anh Ber phản hồi tay. Bỏ trống thì tắt tính năng."
+        >
+          <TagInput
+            value={form.mention_keywords ?? []}
+            tone="positive"
+            placeholder="tên shop, tên dịch vụ, fanpage…"
+            onChange={(mention_keywords) => setForm({ ...form, mention_keywords })}
+          />
+        </Field>
+      </div>
+
       <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <Field label="Ngưỡng phù hợp (0–1)">
           <Input
@@ -288,10 +306,14 @@ function SettingsTab({ campaign, onSaved }: { campaign: Campaign; onSaved: () =>
 // ── Tab: group ─────────────────────────────────────────────────────────────
 function GroupsTab({ campaignId }: { campaignId: string }) {
   const { data, loading, error, reload } = useAsync(() => api.groups(campaignId), [campaignId]);
+  const toast = useToast();
   const [url, setUrl] = useState("");
   const [name, setName] = useState("");
   const [interval, setInterval] = useState(10);
   const [formError, setFormError] = useState("");
+  const [discovering, setDiscovering] = useState(false);
+  const [discoverModalOpen, setDiscoverModalOpen] = useState(false);
+  const [discoverResultMsg, setDiscoverResultMsg] = useState("");
 
   async function add() {
     setFormError("");
@@ -306,6 +328,26 @@ function GroupsTab({ campaignId }: { campaignId: string }) {
       reload();
     } catch (err) {
       setFormError(err instanceof Error ? err.message : "Không thêm được group");
+    }
+  }
+
+  async function startDiscover() {
+    setFormError("");
+    setDiscovering(true);
+    setDiscoverResultMsg("");
+    try {
+      const res = await api.discoverGroups(campaignId);
+      setDiscoverResultMsg(res.message);
+      toast.info(res.message);
+      // Tự động reload sau 30s và 75s để cập nhật nhóm mới
+      window.setTimeout(reload, 30_000);
+      window.setTimeout(reload, 75_000);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Không quét được hồ sơ clone";
+      setFormError(msg);
+      toast.error(msg);
+    } finally {
+      setDiscovering(false);
     }
   }
 
@@ -339,7 +381,75 @@ function GroupsTab({ campaignId }: { campaignId: string }) {
             />
           </Field>
         </div>
+
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 pt-3 dark:border-slate-800">
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setDiscoverModalOpen(true)}
+              icon={<IconFacebook size={15} />}
+            >
+              Tự lấy nhóm đã tham gia từ Clone
+            </Button>
+            <span className="text-xs text-slate-500">
+              Cào tự động toàn bộ nhóm nick Scout đã join
+            </span>
+          </div>
+          <Button variant="ghost" size="xs" onClick={reload} icon={<IconRefresh size={13} />}>
+            Làm mới danh sách
+          </Button>
+        </div>
       </Card>
+
+      {/* Modal hướng dẫn & tiến trình cào nhóm tự động */}
+      <Modal
+        open={discoverModalOpen}
+        title="Tự động lấy nhóm Facebook từ Nick Clone Scout"
+        onClose={() => setDiscoverModalOpen(false)}
+        footer={
+          <div className="flex justify-end gap-2">
+            <Button variant="ghost" onClick={() => setDiscoverModalOpen(false)}>
+              Đóng
+            </Button>
+            <Button
+              onClick={startDiscover}
+              loading={discovering}
+              disabled={discovering}
+              icon={<IconSearch size={15} />}
+            >
+              {discovering ? "Đang gửi lệnh cào…" : "Bắt đầu cào nhóm ngay"}
+            </Button>
+          </div>
+        }
+      >
+        <div className="space-y-4 text-xs text-slate-600 dark:text-slate-300">
+          <div className="rounded-xl border border-indigo-100 bg-indigo-50/70 p-4 dark:border-indigo-950 dark:bg-indigo-950/40">
+            <h4 className="font-bold text-indigo-950 dark:text-indigo-200 flex items-center gap-1.5 mb-2">
+              <IconShieldCheck size={16} className="text-indigo-600" /> Cách thức hoạt động an toàn:
+            </h4>
+            <ul className="space-y-1.5 list-disc list-inside leading-relaxed text-indigo-900 dark:text-indigo-300">
+              <li>Mở trình duyệt Chrome thật trong nền với hồ sơ của clone đóng vai trò <strong>Scout</strong>.</li>
+              <li>Tự động cuộn trang <em>Nhóm của bạn</em> trên Facebook để lấy tối đa 300 nhóm đã tham gia.</li>
+              <li>Chỉ đọc dữ liệu — <strong>không tương tác, không đăng bài, không join/rời nhóm</strong>.</li>
+              <li>Nhóm mới lấy về sẽ ở trạng thái <strong>Tạm dừng (paused)</strong> để anh Ber chủ động bật nhóm nào muốn theo dõi, bảo vệ hạn mức gói cước.</li>
+            </ul>
+          </div>
+
+          {discoverResultMsg && (
+            <div className="rounded-xl border border-emerald-200 bg-emerald-50/80 p-3.5 text-xs text-emerald-800 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-300 flex items-start gap-2">
+              <IconSparkles size={16} className="shrink-0 text-emerald-600 mt-0.5" />
+              <div>
+                <p className="font-bold">Đã tiếp nhận yêu cầu cào nhóm!</p>
+                <p className="mt-1">{discoverResultMsg}</p>
+                <p className="mt-2 text-[11px] text-emerald-700 dark:text-emerald-400">
+                  Tiến trình mất khoảng 60–90 giây. Bạn có thể đóng cửa sổ này, hệ thống sẽ tự động cập nhật và gửi tin nhắn tóm tắt qua Telegram khi hoàn thành.
+                </p>
+              </div>
+            </div>
+          )}
+        </div>
+      </Modal>
 
       <Card title={`Danh sách group (${data?.length ?? 0})`}>
         <ErrorNote>{error}</ErrorNote>

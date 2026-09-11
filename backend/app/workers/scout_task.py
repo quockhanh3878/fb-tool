@@ -14,13 +14,22 @@ from app.database import get_session_factory
 from app.models.base import as_utc
 from app.models.campaign import Campaign, CampaignGroup
 from app.models.clone_account import CloneAccount
-from app.models.enums import AccountState, CloneRole, GroupStatus
+from app.models.enums import AccountState, AccountTransition, CloneRole, GroupStatus
 from app.models.user import User
+from app.services.account_manager import AccountManager, InvalidTransitionError
 from app.services.ai_service import AIService
 from app.services.crypto import decrypt_cookies
-from app.services.notification_service import NotificationService
+from app.services.group_discovery_service import merge_discovered_groups
+from app.services.mention_service import detect_mentions, notify_mentions
+from app.services.notification_service import NotificationService, build_clone_notifier
 from app.services.pipeline import ingest_raw_posts, process_campaign_posts
-from app.workers.browser_runtime import BrowserRuntimeUnavailable, scan_group_raw
+from app.services.quota import SubscriptionInactive
+from app.workers.browser_runtime import (
+    BrowserRuntimeUnavailable,
+    ScoutCheckpoint,
+    scan_group_raw,
+    scrape_joined_groups_raw,
+)
 from app.workers.celery_app import celery_app, run_async
 
 
@@ -62,6 +71,24 @@ async def _pick_scout_clone(db, user_id: str) -> CloneAccount | None:
     return result.scalars().first()
 
 
+async def _flag_scout_checkpoint(db, clone: CloneAccount, detail: str) -> None:
+    """Scout dính checkpoint khi treo máy -> dừng nick, báo chủ, nhường clone dự phòng."""
+    manager = AccountManager(db, notifier=await build_clone_notifier(db))
+    try:
+        await manager.transition(
+            clone, AccountTransition.CHECKPOINT_DETECTED, f"Quét nhóm: {detail}"
+        )
+    except InvalidTransitionError:
+        # Đã ở CHECKPOINT/BANNED rồi -> không cần làm gì thêm.
+        pass
+
+
+async def _note_scout_failure(db, clone: CloneAccount, detail: str) -> None:
+    """Lượt quét hỏng -> tăng bộ đếm; đủ ngưỡng thì AccountManager tự cho nghỉ."""
+    manager = AccountManager(db, notifier=await build_clone_notifier(db))
+    await manager.record_failure(clone, f"Quét nhóm hỏng: {detail}")
+
+
 async def _scan_one(campaign_id: str, group_id: str) -> dict:
     settings = get_settings()
     async with get_session_factory()() as db:
@@ -80,12 +107,35 @@ async def _scan_one(campaign_id: str, group_id: str) -> dict:
         except Exception:
             cookies = None
 
+        # Track D — preflight: xác nhận nick còn đăng nhập trước khi quét.
+        if settings.preflight_before_run:
+            from app.services.preflight_service import run_preflight
+
+            pf = await run_preflight(db, clone, cookies=cookies)
+            await db.commit()
+            if not pf.get("ok"):
+                return {
+                    "error": "preflight_failed",
+                    "reason": pf.get("reason"),
+                    "clone": clone.display_name,
+                }
+
         try:
             raw_posts = await scan_group_raw(clone, group, cookies)
         except BrowserRuntimeUnavailable as exc:
             return {"error": str(exc)}
+        except ScoutCheckpoint as exc:
+            # "Mode treo": nick Scout bị checkpoint -> dừng ngay, không quét lại.
+            await _flag_scout_checkpoint(db, clone, str(exc))
+            await db.commit()
+            return {"error": "scout_checkpoint", "clone": clone.display_name}
         except Exception as exc:  # lỗi mạng/Facebook không được giết cả beat
+            await _note_scout_failure(db, clone, str(exc))
+            await db.commit()
             return {"error": f"scan_failed: {exc}"}
+
+        # Lượt quét trót lọt -> reset bộ đếm hỏng liên tiếp của nick Scout.
+        await AccountManager(db).note_ok(clone)
 
         fresh = await ingest_raw_posts(db, campaign, group, raw_posts)
         stats = await process_campaign_posts(
@@ -96,8 +146,65 @@ async def _scan_one(campaign_id: str, group_id: str) -> dict:
             notifier=NotificationService(),
             user=user,
         )
+
+        mentions = await detect_mentions(db, campaign, group, fresh)
         await db.commit()
-        return {"group": group.group_name, "ingested": len(fresh), **stats}
+
+        await notify_mentions(user, campaign.name, mentions)
+        return {
+            "group": group.group_name,
+            "ingested": len(fresh),
+            "mentions": len(mentions),
+            **stats,
+        }
+
+
+def _discovery_summary(campaign_name: str, result: dict) -> str:
+    """Thẻ tóm tắt gửi Telegram sau khi cào nhóm (hàm thuần — test offline được)."""
+    return (
+        f"Cào nhóm đã tham gia — chiến dịch {campaign_name}\n"
+        f"Tìm thấy {result['discovered']} nhóm, thêm mới {result['added']} "
+        f"(trạng thái tạm dừng, chờ duyệt).\n"
+        f"Bỏ qua: {result['skipped_duplicate']} đã có sẵn, "
+        f"{result['skipped_quota']} vượt hạn mức gói, "
+        f"{result['skipped_invalid']} link không hợp lệ."
+    )
+
+
+async def _discover_groups(campaign_id: str) -> dict:
+    async with get_session_factory()() as db:
+        campaign = await db.get(Campaign, campaign_id)
+        if campaign is None:
+            return {"skipped": "campaign_missing"}
+
+        user = await db.get(User, campaign.user_id)
+        clone = await _pick_scout_clone(db, campaign.user_id)
+        if clone is None:
+            return {"skipped": "no_active_scout_clone"}
+
+        try:
+            cookies = decrypt_cookies(clone.cookie_data_encrypted)
+        except Exception:
+            cookies = None
+
+        try:
+            raw_groups = await scrape_joined_groups_raw(clone, cookies)
+        except BrowserRuntimeUnavailable as exc:
+            return {"error": str(exc)}
+        except Exception as exc:  # lỗi mạng/Facebook không được giết cả beat
+            return {"error": f"scrape_failed: {exc}"}
+
+        try:
+            result = await merge_discovered_groups(db, campaign, user, raw_groups)
+        except SubscriptionInactive as exc:
+            return {"error": str(exc)}
+        await db.commit()
+
+        if user is not None and user.telegram_chat_id:
+            await NotificationService().send_text(
+                user.telegram_chat_id, _discovery_summary(campaign.name, result)
+            )
+        return result
 
 
 @celery_app.task(name="app.workers.scout_task.scan_all_active_campaigns")
@@ -113,3 +220,14 @@ def scan_all_active_campaigns() -> dict:
 )
 def scan_group(self, campaign_id: str, group_id: str) -> dict:
     return run_async(_scan_one(campaign_id, group_id))
+
+
+@celery_app.task(
+    name="app.workers.scout_task.discover_joined_groups",
+    bind=True,
+    max_retries=1,
+    default_retry_delay=300,
+)
+def discover_joined_groups(self, campaign_id: str) -> dict:
+    """Cào hồ sơ clone Scout, nạp các nhóm đã tham gia vào chiến dịch (status paused)."""
+    return run_async(_discover_groups(campaign_id))

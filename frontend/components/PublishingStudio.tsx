@@ -342,7 +342,15 @@ function PublishCard({
                         <IconExternalLink size={12} />
                       </a>
                     ) : (
-                      <span className="text-slate-400">Không có link</span>
+                      <span className="text-slate-400">
+                        {res.status === "failed"
+                          ? `Đăng lỗi${res.error ? `: ${res.error}` : ""}`
+                          : res.status === "skipped_quota"
+                            ? "Bỏ qua — hết hạn mức ngày"
+                            : res.status === "published_no_url"
+                              ? "Đã đăng, chưa lấy được link"
+                              : "Không có link"}
+                      </span>
                     )}
                   </li>
                 ))}

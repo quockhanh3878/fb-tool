@@ -247,6 +247,18 @@ class AccountManager:
         await self.db.flush()
         return clone
 
+    async def note_ok(self, clone: CloneAccount) -> None:
+        """Một lượt việc KHÔNG-phải-comment (quét, đăng bài) chạy trót lọt.
+
+        Chỉ xoá bộ đếm hỏng liên tiếp + dập nhịp hoạt động — KHÔNG đụng
+        `daily_comment_count` như `record_success` (quét/đăng bài không phải
+        comment). Dùng cho "mode treo" để một lượt tốt reset ngưỡng tự-nghỉ.
+        """
+        if clone.consecutive_failures:
+            clone.consecutive_failures = 0
+        clone.last_activity_at = utcnow()
+        await self.db.flush()
+
     async def record_success(self, clone: CloneAccount) -> None:
         clone.consecutive_failures = 0
         clone.last_activity_at = utcnow()

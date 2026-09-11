@@ -128,9 +128,16 @@ export default function CampaignsPage() {
         <Empty
           icon={<IconLayers size={24} />}
           action={
-            <Button onClick={() => setOpen(true)} icon={<IconPlus size={16} />}>
-              Tạo chiến dịch đầu tiên
-            </Button>
+            <div className="flex flex-wrap justify-center gap-2.5">
+              <Button onClick={() => setOpen(true)} icon={<IconPlus size={16} />}>
+                Tạo chiến dịch mới
+              </Button>
+              <Link href="/onboarding">
+                <Button variant="ghost" icon={<IconSparkles size={16} />}>
+                  Chạy hướng dẫn 5 bước (Onboarding)
+                </Button>
+              </Link>
+            </div>
           }
         >
           Chưa có chiến dịch nào hoạt động. Hãy tạo chiến dịch để hệ thống Scout bắt đầu quét và săn lead Facebook.

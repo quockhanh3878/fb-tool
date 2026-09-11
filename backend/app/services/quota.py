@@ -93,6 +93,18 @@ async def ensure_can_add_group(db: AsyncSession, user: User, adding: int = 1) ->
         )
 
 
+async def remaining_group_slots(db: AsyncSession, user: User) -> int:
+    """Số group user còn được phép thêm theo gói cước hiện tại (>= 0).
+
+    Ném SubscriptionInactive nếu gói hết hạn — luồng gọi phải bắt.
+    """
+    subscription = await require_active_subscription(db, user)
+    spec = get_plan(subscription.plan)
+    limit = _limit(subscription, spec, "max_groups")
+    current = await count_user_groups(db, user.id)
+    return max(0, limit - current)
+
+
 async def ensure_can_add_clone(db: AsyncSession, user: User, adding: int = 1) -> None:
     subscription = await require_active_subscription(db, user)
     spec = get_plan(subscription.plan)

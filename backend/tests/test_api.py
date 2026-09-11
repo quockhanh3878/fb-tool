@@ -210,6 +210,332 @@ async def run_api_tests(client: httpx.AsyncClient) -> None:
     )
     check("Sau khi nang Pro, them group thanh cong", resp.status_code == 201)
 
+    # ── 4b. Cao nhom da tham gia: endpoint ──────────────────────────────
+    section("4b. POST /groups/discover")
+    from app.workers import scout_task as _scout_task
+
+    _orig_delay = _scout_task.discover_joined_groups.delay
+    _dispatched: list = []
+    _scout_task.discover_joined_groups.delay = lambda *a, **k: _dispatched.append(a)
+    try:
+        resp = await client.post(f"/api/campaigns/{cid}/groups/discover", headers=auth)
+        check(
+            "Discover tra 202 + queued",
+            resp.status_code == 202 and resp.json()["queued"] is True,
+            resp.text[:200],
+        )
+        check("Discover day dung task (campaign_id) vao hang doi", _dispatched == [(cid,)])
+
+        resp = await client.post(f"/api/campaigns/{cid}/groups/discover")
+        check("Discover yeu cau dang nhap -> 401", resp.status_code == 401)
+    finally:
+        _scout_task.discover_joined_groups.delay = _orig_delay
+
+    # ── 4c. Gop nhom cao vao chien dich (logic thuan DB) ────────────────
+    section("4c. merge_discovered_groups")
+    from app.database import get_session_factory
+    from app.models.campaign import Campaign as _Campaign
+    from app.models.user import User as _User
+    from app.services.group_discovery_service import merge_discovered_groups
+
+    resp = await client.post(
+        "/api/auth/register",
+        json={"email": "disc@test.vn", "password": "matkhau123", "display_name": "Disc"},
+    )
+    disc_auth = {"Authorization": f"Bearer {resp.json()['access_token']}"}
+    resp = await client.post("/api/campaigns", headers=disc_auth, json={"name": "Disc camp"})
+    disc_cid = resp.json()["id"]
+    for key in ("cosan1", "cosan2"):  # 2 nhom co san -> Starter con 3 slot
+        await client.post(
+            f"/api/campaigns/{disc_cid}/groups",
+            headers=disc_auth,
+            json={"group_url": f"https://www.facebook.com/groups/{key}/"},
+        )
+
+    raw_scraped = [
+        {"url": "https://www.facebook.com/groups/cosan1/", "name": "Trung nhom da co"},
+        {"url": "https://google.com/khong-phai-facebook", "name": "Link rac"},
+        {"url": "https://www.facebook.com/groups/moi1/", "name": "Moi 1"},
+        {"url": "https://www.facebook.com/groups/moi2/", "name": "Moi 2"},
+        {"url": "https://www.facebook.com/groups/moi2/", "name": "Moi 2 lap lai"},
+        {"url": "https://www.facebook.com/groups/moi3/", "name": "Moi 3"},
+        {"url": "https://www.facebook.com/groups/moi4/", "name": "Moi 4"},
+    ]
+    async with get_session_factory()() as _db:
+        _camp = await _db.get(_Campaign, disc_cid)
+        _user = await _db.get(_User, _camp.user_id)
+        merge_result = await merge_discovered_groups(_db, _camp, _user, raw_scraped)
+        await _db.commit()
+
+    check(
+        "Discovered = 5 key hop le (loai link rac + gop trung input)",
+        merge_result["discovered"] == 5,
+        str(merge_result),
+    )
+    check("Bo qua 1 link khong phai Facebook", merge_result["skipped_invalid"] == 1, str(merge_result))
+    check("Bo qua 1 nhom da co trong chien dich", merge_result["skipped_duplicate"] == 1, str(merge_result))
+    check("Chi them 3 nhom (day quota Starter con lai)", merge_result["added"] == 3, str(merge_result))
+    check("1 nhom vuot quota bi bo lai", merge_result["skipped_quota"] == 1, str(merge_result))
+
+    resp = await client.get(f"/api/campaigns/{disc_cid}/groups", headers=disc_auth)
+    scraped_rows = [g for g in resp.json() if g["group_key"].startswith("moi")]
+    check(
+        "Nhom cao ve deu o trang thai paused, cho duyet",
+        len(scraped_rows) == 3 and all(g["status"] == "paused" for g in scraped_rows),
+    )
+
+    # ── 4d. Hop thu "Nhac toi" (mentions) ──────────────────────────────
+    section("4d. Hop thu Nhac toi (mentions)")
+    from app.services.mention_service import match_mention_keywords
+
+    check(
+        "match_mention_keywords bo dau + ha chu thuong",
+        match_mention_keywords("Ben ThoMay Studio lam an uy tin", ["thomay studio"])
+        == ["thomay studio"],
+    )
+    check(
+        "match_mention_keywords khong khop -> rong",
+        match_mention_keywords("khong nhac gi ca o day", ["thomay studio"]) == [],
+    )
+
+    resp = await client.post(
+        "/api/auth/register",
+        json={"email": "mention@test.vn", "password": "matkhau123", "display_name": "Mention"},
+    )
+    m_auth = {"Authorization": f"Bearer {resp.json()['access_token']}"}
+    resp = await client.post(
+        "/api/campaigns",
+        headers=m_auth,
+        json={"name": "Camp nhac toi", "mention_keywords": ["ThoMay Studio", "xuong may Ber"]},
+    )
+    m_cid = resp.json()["id"]
+    check(
+        "Campaign luu mention_keywords",
+        resp.json()["mention_keywords"] == ["ThoMay Studio", "xuong may Ber"],
+        resp.text[:200],
+    )
+
+    resp = await client.post(
+        f"/api/campaigns/{m_cid}/groups",
+        headers=m_auth,
+        json={"group_url": "https://www.facebook.com/groups/nhactoi1/"},
+    )
+    m_gid = resp.json()["id"]
+
+    mention_raw_posts = [
+        {
+            "author": "Chi Lan",
+            "text": "Minh vua dat ao dai o thomay studio, duong may dep lam moi nguoi oi",
+            "url": "https://fb.com/p/1",
+            "commentCount": 2,
+        },
+        {
+            "author": "Anh Hung",
+            "text": "Ai biet cho nao may vest dep khong, dang can gap trong tuan nay nhe",
+            "url": "https://fb.com/p/2",
+            "commentCount": 5,
+        },
+        {
+            "author": "Co Ba",
+            "text": "Xuong may Ber uy tin lam, giao dung hen, gia hop ly nha cac chi",
+            "url": "https://fb.com/p/3",
+            "commentCount": 0,
+        },
+    ]
+    resp = await client.post(
+        f"/api/campaigns/{m_cid}/ingest",
+        headers=m_auth,
+        json={"group_id": m_gid, "posts": mention_raw_posts},
+    )
+    check(
+        "Ingest tao 2 luot nhac (2/3 bai khop keyword)",
+        resp.json()["mentions"] == 2,
+        resp.text[:200],
+    )
+
+    resp = await client.post(
+        f"/api/campaigns/{m_cid}/ingest",
+        headers=m_auth,
+        json={"group_id": m_gid, "posts": mention_raw_posts},
+    )
+    check(
+        "Ingest lai -> ingest_raw_posts da loc bai cu, khong luot nhac moi",
+        resp.json()["mentions"] == 0,
+        resp.text[:200],
+    )
+
+    # detect_mentions goi thang 2 lan tren cung danh sach bai -> guard dedup noi bo
+    from sqlalchemy import select as _select
+    from app.services.mention_service import detect_mentions as _detect_mentions
+    from app.models.campaign import Campaign as _Camp2
+    from app.models.post import DiscoveredPost as _DPost
+    async with get_session_factory()() as _mdb:
+        _mc = await _mdb.get(_Camp2, m_cid)
+        _mposts = (
+            await _mdb.execute(
+                _select(_DPost).where(_DPost.campaign_id == m_cid)
+            )
+        ).scalars().all()
+        again = await _detect_mentions(_mdb, _mc, None, list(_mposts))
+        await _mdb.commit()
+    check(
+        "detect_mentions goi lai tren bai da co Mention -> tra ve rong (dedup content_hash)",
+        again == [],
+        str(again),
+    )
+
+    resp = await client.get("/api/mentions", headers=m_auth)
+    check(
+        "GET /api/mentions tra ve 2 luot",
+        resp.status_code == 200 and resp.json()["total"] == 2,
+        resp.text[:200],
+    )
+    mention_rows = resp.json()["items"]
+    check("Luot nhac deu o trang thai new", all(m["status"] == "new" for m in mention_rows))
+    check(
+        "Luot nhac giu lai keyword da khop",
+        any("ThoMay Studio" in m["matched_keywords"] for m in mention_rows),
+    )
+
+    resp = await client.get("/api/mentions/unread-count", headers=m_auth)
+    check("unread-count = 2", resp.json()["count"] == 2, resp.text[:200])
+
+    first_mention_id = mention_rows[0]["id"]
+    resp = await client.post(f"/api/mentions/{first_mention_id}/read", headers=m_auth)
+    check(
+        "POST /read -> status = read + seen_at set",
+        resp.json()["status"] == "read" and bool(resp.json()["seen_at"]),
+        resp.text[:200],
+    )
+    resp = await client.get("/api/mentions/unread-count", headers=m_auth)
+    check("unread-count giam con 1 sau khi doc", resp.json()["count"] == 1)
+
+    resp = await client.post(
+        f"/api/mentions/{mention_rows[1]['id']}/archive", headers=m_auth
+    )
+    check("POST /archive -> status = archived", resp.json()["status"] == "archived")
+    resp = await client.get("/api/mentions?status=new", headers=m_auth)
+    check(
+        "Loc status=new -> con 0 (1 read + 1 archived)",
+        resp.json()["total"] == 0,
+        resp.text[:200],
+    )
+
+    resp = await client.post(f"/api/mentions/{first_mention_id}/read", headers=disc_auth)
+    check("Cach ly da khach: user khac dong luot nhac -> 404", resp.status_code == 404)
+    resp = await client.get("/api/mentions", headers=disc_auth)
+    check("User khac khong thay luot nhac nao", resp.json()["total"] == 0)
+
+    resp = await client.post(
+        "/api/campaigns", headers=m_auth, json={"name": "Camp khong keyword"}
+    )
+    nk_cid = resp.json()["id"]
+    resp = await client.post(
+        f"/api/campaigns/{nk_cid}/groups",
+        headers=m_auth,
+        json={"group_url": "https://www.facebook.com/groups/nhactoi2/"},
+    )
+    nk_gid = resp.json()["id"]
+    resp = await client.post(
+        f"/api/campaigns/{nk_cid}/ingest",
+        headers=m_auth,
+        json={"group_id": nk_gid, "posts": mention_raw_posts},
+    )
+    check(
+        "mention_keywords rong -> tinh nang tat, khong tao luot nhac",
+        resp.json()["mentions"] == 0,
+        resp.text[:200],
+    )
+
+    resp = await client.delete(f"/api/mentions/{first_mention_id}", headers=m_auth)
+    check("DELETE /api/mentions/{id} -> 204", resp.status_code == 204)
+
+    # ── 4e. Telegram summary: CA HAI duong ingest deu phai ban ──────────
+    section("4e. notify_mentions - hai duong ingest deu ban Telegram")
+    from app.services.mention_service import notify_mentions as _notify_mentions
+
+    class _RecNotifier:
+        def __init__(self) -> None:
+            self.sent: list[tuple[str, str]] = []
+
+        async def send_text(self, chat_id: str, text: str, markdown: bool = False):
+            self.sent.append((chat_id, text))
+            return {"ok": True}
+
+    class _FakeUser:
+        telegram_chat_id = "999000111"
+
+    class _FakeMention:
+        matched_keywords = ["ThoMay Studio"]
+
+    _rec = _RecNotifier()
+    _did = await _notify_mentions(
+        _FakeUser(), "Camp nhac toi", [_FakeMention()], _rec
+    )
+    check(
+        "notify_mentions: co luot nhac + user co telegram_chat_id -> ban",
+        _did is True
+        and len(_rec.sent) == 1
+        and _rec.sent[0][0] == "999000111"
+        and "Camp nhac toi" in _rec.sent[0][1],
+    )
+
+    _rec2 = _RecNotifier()
+    _did2 = await _notify_mentions(_FakeUser(), "Camp", [], _rec2)
+    check(
+        "notify_mentions: khong co luot nhac moi -> khong ban",
+        _did2 is False and _rec2.sent == [],
+    )
+
+    class _NoChatUser:
+        telegram_chat_id = ""
+
+    _rec3 = _RecNotifier()
+    _did3 = await _notify_mentions(
+        _NoChatUser(), "Camp", [_FakeMention()], _rec3
+    )
+    check(
+        "notify_mentions: user chua lien ket Telegram -> khong ban",
+        _did3 is False and _rec3.sent == [],
+    )
+
+    # Hoi quy dung cho lo hong da phat hien: POST /ingest KHONG goi notify_mentions.
+    import app.routers.posts as _posts_mod
+
+    _ingest_notify_calls: list[tuple[str, int]] = []
+    _orig_notify = _posts_mod.notify_mentions
+
+    async def _spy_notify(user, campaign_name, mentions, notifier=None):
+        _ingest_notify_calls.append((campaign_name, len(mentions)))
+        return True
+
+    _posts_mod.notify_mentions = _spy_notify
+    try:
+        resp = await client.post(
+            f"/api/campaigns/{m_cid}/ingest",
+            headers=m_auth,
+            json={
+                "group_id": m_gid,
+                "posts": [
+                    {
+                        "author": "Khach Moi Toanh",
+                        "text": "Vua ghe ThoMay Studio may bo ao dai cuoi, ung qua cac chi oi",
+                        "url": "https://fb.com/p/spy-ingest-1",
+                        "commentCount": 1,
+                    }
+                ],
+            },
+        )
+    finally:
+        _posts_mod.notify_mentions = _orig_notify
+    check(
+        "POST /api/campaigns/{id}/ingest goi notify_mentions voi luot nhac moi",
+        resp.status_code == 201
+        and len(_ingest_notify_calls) == 1
+        and _ingest_notify_calls[0][1] >= 1,
+        str(_ingest_notify_calls),
+    )
+
     # ── 5. Script Studio ────────────────────────────────────────────────
     section("5. Script Studio (spintax)")
     resp = await client.post(
@@ -494,6 +820,50 @@ async def run_api_tests(client: httpx.AsyncClient) -> None:
     check("Feed tra ve dung 4 bai", feed["total"] == 4)
     notified = [p for p in feed["items"] if p["status"] == "notified"]
     check("Bai duoc thong bao la bai cua Nguyen Van A", len(notified) == 1 and notified[0]["author_name"] == "Nguyen Van A")
+
+    # ── 7b. browser_runtime: attach CDP thay cho cookie clone ───────────
+    section("7b. browser_runtime: build_runtime_config + attach CDP")
+    from types import SimpleNamespace
+    from app.workers.browser_runtime import (
+        build_runtime_config,
+        _maybe_write_cookies,
+        RuntimeConfig as _RC,
+    )
+
+    _fake_clone = SimpleNamespace(
+        id="clone-x",
+        browser_profile_path="",
+        proxy_address="http://user:pass@1.2.3.4:8000",
+        daily_comment_limit=15,
+    )
+    _fake_group = SimpleNamespace(
+        group_url="https://www.facebook.com/groups/123/",
+        group_name="G",
+        scan_interval_minutes=10,
+    )
+
+    cfg_default = build_runtime_config(_fake_clone, [_fake_group])
+    check("Khong dat CDP -> account.cdp_endpoint None", cfg_default.accounts["scout"].cdp_endpoint is None)
+    check("Khong dat CDP -> browser.attach_cdp None", cfg_default.browser.attach_cdp is None)
+    check("Khong dat CDP -> giu nguyen proxy cua clone", cfg_default.accounts["scout"].proxy == "http://user:pass@1.2.3.4:8000")
+
+    cfg_cdp = build_runtime_config(_fake_clone, [_fake_group], cdp_endpoint="  http://localhost:9222  ")
+    check("Dat CDP -> account.cdp_endpoint da trim", cfg_cdp.accounts["scout"].cdp_endpoint == "http://localhost:9222")
+    check("Dat CDP -> scout & shooter cung endpoint", cfg_cdp.accounts["shooter"].cdp_endpoint == "http://localhost:9222")
+    check("Dat CDP -> browser.attach_cdp co gia tri", cfg_cdp.browser.attach_cdp == "http://localhost:9222")
+    check("Dat CDP -> bo proxy (Chrome that, khong ap proxy)", cfg_cdp.accounts["scout"].proxy is None)
+    check("Dat CDP rong -> coi nhu khong dat", build_runtime_config(_fake_clone, [], cdp_endpoint="   ").browser.attach_cdp is None)
+
+    _written = []
+    _real_write = sys.modules["app.workers.browser_runtime"].write_cookie_file
+    sys.modules["app.workers.browser_runtime"].write_cookie_file = lambda c, ck: _written.append(ck) or "x"
+    try:
+        _maybe_write_cookies(cfg_cdp, _fake_clone, [{"name": "c_user"}])
+        check("Attach CDP -> KHONG ghi cookie ra dia", _written == [])
+        _maybe_write_cookies(cfg_default, _fake_clone, [{"name": "c_user"}])
+        check("Khong CDP -> van ghi cookie vao profile", len(_written) == 1)
+    finally:
+        sys.modules["app.workers.browser_runtime"].write_cookie_file = _real_write
 
     # ── 8. Ung tuyen & hang doi ─────────────────────────────────────────
     section("8. Ung tuyen thu cong & hang doi comment")
@@ -790,15 +1160,482 @@ async def run_api_tests(client: httpx.AsyncClient) -> None:
     )
     check("Kich hoat clone poster thanh active", resp.status_code == 200 and resp.json()["status"] == "active")
 
-    # Thuc thi dang ngay
-    resp = await client.post(f"/api/publishing/{pub_id}/publish-now", headers=auth)
+    # Thuc thi dang ngay khi browser runtime KHONG san sang ->
+    # status failed, publish_results rong, KHONG co URL gia lap nao (hoi quy bug gia lap).
+    from app.services import publisher_service as _pub_svc0
+    from app.workers.browser_runtime import BrowserRuntimeUnavailable as _BRU
+
+    async def _raise_unavailable(*a, **k):
+        raise _BRU("Khong nap duoc module Phase 1 (commhunter/) trong moi truong test.")
+
+    _orig0 = _pub_svc0.publish_post_real
+    _pub_svc0.publish_post_real = _raise_unavailable
+    try:
+        resp = await client.post(f"/api/publishing/{pub_id}/publish-now", headers=auth)
+    finally:
+        _pub_svc0.publish_post_real = _orig0
     check("Dang bai ngay lap tuc -> 200", resp.status_code == 200)
-    check("Trang thai chuyen sang published", resp.json()["status"] == "published")
-    check("Co ket qua dang bai vao group", len(resp.json().get("publish_results", [])) == 1)
+    body = resp.json()
+    check("Khong co browser runtime -> status failed", body["status"] == "failed")
+    check("publish_results rong khi browser khong san sang", body.get("publish_results", []) == [])
+    check(
+        "Khong bia ra post_url gia lap",
+        all(not r.get("post_url") for r in body.get("publish_results", [])),
+    )
 
     # Xoa bai dang
     resp = await client.delete(f"/api/publishing/{pub_id}", headers=auth)
     check("Xoa bai dang -> 204", resp.status_code == 204)
+
+    # ── 14c. execute_publish: dang mot phan (partially_published) ────────
+    section("14c. execute_publish partially_published + quota theo so nhom")
+    from app.database import get_session_factory as _gsf
+    from app.models.post import PostPublish as _PostPublish
+    from app.models.clone_account import CloneAccount as _CloneAccount
+    from app.services import publisher_service as _pub_svc
+
+    # Poster rieng, active, gioi han post cao de khong cham quota.
+    resp = await client.post(
+        "/api/clones",
+        headers=auth,
+        json={"display_name": "Poster 14c", "role": "poster", "daily_post_limit": 10},
+    )
+    poster14c_id = resp.json()["id"]
+    await client.post(
+        f"/api/clones/{poster14c_id}/upload-cookie",
+        headers=auth,
+        files={"file": ("cookies.json", good_cookie, "application/json")},
+    )
+    await client.post(
+        f"/api/clones/{poster14c_id}/transition", headers=auth,
+        json={"event": "warmup_complete"},
+    )
+
+    resp = await client.post(
+        "/api/publishing",
+        headers=auth,
+        json={
+            "title": "Bai seeding 3 nhom",
+            "content_template": "{Chao|Hi} ca nha, minh dang tim khach ne so 3 nhom test",
+            "target_groups": [
+                {"group_id": "a", "group_name": "A", "group_url": "https://facebook.com/groups/a"},
+                {"group_id": "b", "group_name": "B", "group_url": "https://facebook.com/groups/b"},
+                {"group_id": "c", "group_name": "C", "group_url": "https://facebook.com/groups/c"},
+            ],
+            "clone_account_id": poster14c_id,
+        },
+    )
+    pub3_id = resp.json()["id"]
+
+    _calls: list = []
+
+    async def _fake_publish(clone, group_url, content, cookies=None):
+        _calls.append((group_url, content))
+        if group_url.endswith("/b"):
+            return {"status": "failed", "post_url": None, "error": "composer_not_found"}
+        return {
+            "status": "published",
+            "post_url": f"{group_url}/posts/{len(_calls)}00{len(_calls)}",
+            "error": None,
+        }
+
+    _orig_publish = _pub_svc.publish_post_real
+    _pub_svc.publish_post_real = _fake_publish
+    try:
+        async with _gsf()() as _db:
+            before = await _db.get(_CloneAccount, poster14c_id)
+            before_count = before.daily_post_count
+            out = await _pub_svc.execute_publish(_db, pub3_id)
+            await _db.commit()
+            after = await _db.get(_CloneAccount, poster14c_id)
+            pp = await _db.get(_PostPublish, pub3_id)
+    finally:
+        _pub_svc.publish_post_real = _orig_publish
+
+    check("3 nhom -> goi publish_post_real dung 3 lan", len(_calls) == 3, str(_calls))
+    check("Moi nhom deu duoc render noi dung (khong rong)", all(c[1].strip() for c in _calls))
+    check("Noi dung da render spintax (khong con dau {)", all("{" not in c[1] for c in _calls))
+    check("1 nhom loi -> trang thai partially_published", pp.status == "partially_published", pp.status)
+    check("daily_post_count tang dung 2 (so nhom da dang)", after.daily_post_count == before_count + 2,
+          f"{before_count} -> {after.daily_post_count}")
+    check("publish_results co 3 dong", len(pp.publish_results) == 3)
+    check(
+        "Nhom loi khong co post_url",
+        next(r for r in pp.publish_results if r["group_id"] == "b")["post_url"] is None,
+    )
+    check("execute_publish tra published_count = 2", out.get("published_count") == 2, str(out))
+
+    await client.delete(f"/api/publishing/{pub3_id}", headers=auth)
+    await client.delete(f"/api/clones/{poster14c_id}", headers=auth)
+
+    # ── 14d. Runtime browser chet GIUA CHUNG -> giu ket qua nhom da dang ──
+    section("14d. execute_publish: browser chet sau khi da dang 1 nhom -> partial")
+    resp = await client.post(
+        "/api/clones", headers=auth,
+        json={"display_name": "Poster 14d", "role": "poster", "daily_post_limit": 10},
+    )
+    poster14d_id = resp.json()["id"]
+    await client.post(
+        f"/api/clones/{poster14d_id}/upload-cookie", headers=auth,
+        files={"file": ("cookies.json", good_cookie, "application/json")},
+    )
+    await client.post(
+        f"/api/clones/{poster14d_id}/transition", headers=auth,
+        json={"event": "warmup_complete"},
+    )
+    resp = await client.post(
+        "/api/publishing", headers=auth,
+        json={
+            "title": "Bai seeding 3 nhom (browser chet)",
+            "content_template": "{Chao|Hi} ca nha minh test browser chet giua chung ne",
+            "target_groups": [
+                {"group_id": "d1", "group_name": "D1", "group_url": "https://facebook.com/groups/d1"},
+                {"group_id": "d2", "group_name": "D2", "group_url": "https://facebook.com/groups/d2"},
+                {"group_id": "d3", "group_name": "D3", "group_url": "https://facebook.com/groups/d3"},
+            ],
+            "clone_account_id": poster14d_id,
+        },
+    )
+    pub4_id = resp.json()["id"]
+
+    _d_calls: list = []
+
+    async def _fake_publish_then_die(clone, group_url, content, cookies=None):
+        _d_calls.append(group_url)
+        if len(_d_calls) == 1:
+            return {
+                "status": "published",
+                "post_url": f"{group_url}/posts/111", "error": None,
+            }
+        raise _BRU("Chrome dong bat ngo giua luot dang.")
+
+    _orig_die = _pub_svc.publish_post_real
+    _pub_svc.publish_post_real = _fake_publish_then_die
+    try:
+        async with _gsf()() as _db:
+            before_d = await _db.get(_CloneAccount, poster14d_id)
+            before_d_count = before_d.daily_post_count
+            out_d = await _pub_svc.execute_publish(_db, pub4_id)
+            await _db.commit()
+            after_d = await _db.get(_CloneAccount, poster14d_id)
+            pp_d = await _db.get(_PostPublish, pub4_id)
+    finally:
+        _pub_svc.publish_post_real = _orig_die
+
+    check("Browser chet giua chung -> KHONG bao browser_runtime_unavailable",
+          "error" not in out_d, str(out_d))
+    check("Nhom da dang xong duoc giu -> status partially_published",
+          pp_d.status == "partially_published", pp_d.status)
+    check("publish_results giu 1 dong nhom da dang (khong bi xoa trang)",
+          len(pp_d.publish_results) == 1 and pp_d.publish_results[0]["post_url"] == "https://facebook.com/groups/d1/posts/111",
+          str(pp_d.publish_results))
+    check("daily_post_count tang 1 (dung nhom da ghi that)",
+          after_d.daily_post_count == before_d_count + 1,
+          f"{before_d_count} -> {after_d.daily_post_count}")
+    check("error_message co link da dang de ra soat (rollback thu cong)",
+          pp_d.error_message and "posts/111" in pp_d.error_message, pp_d.error_message)
+
+    await client.delete(f"/api/publishing/{pub4_id}", headers=auth)
+    await client.delete(f"/api/clones/{poster14d_id}", headers=auth)
+
+    # ── 14d-bis. Mode treo: Poster tu bao ve khi dang bai ───────────────
+    section("14d-bis. Mode treo - Poster checkpoint / hong toan bo")
+
+    async def _mk_poster(name):
+        r = await client.post("/api/clones", headers=auth,
+            json={"display_name": name, "role": "poster", "daily_post_limit": 10})
+        pid = r.json()["id"]
+        await client.post(f"/api/clones/{pid}/upload-cookie", headers=auth,
+            files={"file": ("cookies.json", good_cookie, "application/json")})
+        await client.post(f"/api/clones/{pid}/transition", headers=auth,
+            json={"event": "warmup_complete"})
+        return pid
+
+    async def _mk_pub(pid, title):
+        r = await client.post("/api/publishing", headers=auth, json={
+            "title": title,
+            "content_template": "{Chao|Hi} ca nha minh dang test mode treo cho poster",
+            "target_groups": [
+                {"group_id": "x1", "group_name": "X1", "group_url": "https://facebook.com/groups/x1"},
+                {"group_id": "x2", "group_name": "X2", "group_url": "https://facebook.com/groups/x2"},
+            ],
+            "clone_account_id": pid,
+        })
+        return r.json()["id"]
+
+    poster_cp_id = await _mk_poster("Poster checkpoint")
+    pub_cp_id = await _mk_pub(poster_cp_id, "Poster gap checkpoint")
+
+    async def _pub_checkpoint(clone, group_url, content, cookies=None):
+        return {"status": "failed", "post_url": None, "error": "checkpoint"}
+
+    _op = _pub_svc.publish_post_real
+    _pub_svc.publish_post_real = _pub_checkpoint
+    try:
+        async with _gsf()() as _db:
+            await _pub_svc.execute_publish(_db, pub_cp_id)
+            await _db.commit()
+            pcp = await _db.get(_CloneAccount, poster_cp_id)
+    finally:
+        _pub_svc.publish_post_real = _op
+    check("Poster gap checkpoint khi dang bai -> clone sang trang thai checkpoint",
+          pcp.status == "checkpoint", pcp.status)
+
+    poster_fail_id = await _mk_poster("Poster hong toan bo")
+    pub_fail_id = await _mk_pub(poster_fail_id, "Poster hong het")
+
+    async def _pub_allfail(clone, group_url, content, cookies=None):
+        return {"status": "failed", "post_url": None, "error": "composer_not_found"}
+
+    _pub_svc.publish_post_real = _pub_allfail
+    try:
+        async with _gsf()() as _db:
+            pf_before = await _db.get(_CloneAccount, poster_fail_id)
+            pf_before_fails = pf_before.consecutive_failures
+            await _pub_svc.execute_publish(_db, pub_fail_id)
+            await _db.commit()
+            pf_after = await _db.get(_CloneAccount, poster_fail_id)
+    finally:
+        _pub_svc.publish_post_real = _op
+    check("Poster hong toan bo nhom (khong checkpoint) -> record_failure (fails +1)",
+          pf_after.consecutive_failures == pf_before_fails + 1
+          and pf_after.status == "active",
+          f"{pf_before_fails} -> {pf_after.consecutive_failures} / {pf_after.status}")
+
+    for _pubid, _pid in ((pub_cp_id, poster_cp_id), (pub_fail_id, poster_fail_id)):
+        await client.delete(f"/api/publishing/{_pubid}", headers=auth)
+        await client.delete(f"/api/clones/{_pid}", headers=auth)
+
+    # ── 14e. Mode treo: Scout tu bao ve khi chay khong nguoi truc ───────
+    section("14e. Mode treo - Scout tu dung khi checkpoint / hong lien tiep")
+    from app.workers import scout_task as _scout_task
+    from app.workers.browser_runtime import ScoutCheckpoint as _ScoutCheckpoint
+    from app.models.campaign import Campaign as _Campaign, CampaignGroup as _CampaignGroup
+    from app.services.account_manager import SHADOWBAN_COOLDOWN_THRESHOLD as _SBT
+
+    resp = await client.post(
+        "/api/clones", headers=auth,
+        json={"display_name": "Scout treo 14e", "role": "scout"},
+    )
+    scout_treo_id = resp.json()["id"]
+    await client.post(
+        f"/api/clones/{scout_treo_id}/upload-cookie", headers=auth,
+        files={"file": ("cookies.json", good_cookie, "application/json")},
+    )
+    await client.post(
+        f"/api/clones/{scout_treo_id}/transition", headers=auth,
+        json={"event": "warmup_complete"},
+    )
+
+    resp = await client.post(
+        "/api/campaigns", headers=auth,
+        json={"name": "Camp mode treo 14e", "service_name": "X", "ai_filter_prompt": "x"},
+    )
+    treo_cid = resp.json()["id"]
+    resp = await client.post(
+        f"/api/campaigns/{treo_cid}/groups", headers=auth,
+        json={"group_url": "https://www.facebook.com/groups/modetreo14e/", "group_name": "Mode treo 14e"},
+    )
+    treo_gid = resp.json()["id"]
+    cid, gid = treo_cid, treo_gid
+
+    async with _gsf()() as _db:
+        _c = await _db.get(_Campaign, cid)
+        _c.is_active = True
+        _g = await _db.get(_CampaignGroup, gid)
+        _g.status = "active"
+        await _db.commit()
+
+    _orig_scan = _scout_task.scan_group_raw
+
+    async def _scan_checkpoint(clone, group, cookies=None):
+        raise _ScoutCheckpoint("Scout account bi checkpoint tai /checkpoint/")
+
+    _scout_task.scan_group_raw = _scan_checkpoint
+    try:
+        out_cp = await _scout_task._scan_one(cid, gid)
+        async with _gsf()() as _db:
+            sc_after = await _db.get(_CloneAccount, scout_treo_id)
+    finally:
+        _scout_task.scan_group_raw = _orig_scan
+
+    check("Scout checkpoint -> _scan_one bao 'scout_checkpoint'",
+          out_cp.get("error") == "scout_checkpoint", str(out_cp))
+    check("Scout checkpoint -> clone chuyen sang trang thai checkpoint",
+          sc_after.status == "checkpoint", sc_after.status)
+
+    # Kich hoat lai clone de test nhanh 'hong lien tiep'
+    async with _gsf()() as _db:
+        sc = await _db.get(_CloneAccount, scout_treo_id)
+        sc.status = "active"
+        sc.consecutive_failures = 0
+        sc.last_checkpoint_at = None
+        await _db.commit()
+
+    async def _scan_boom(clone, group, cookies=None):
+        raise RuntimeError("timeout doc feed")
+
+    _scout_task.scan_group_raw = _scan_boom
+    try:
+        for _ in range(_SBT):
+            await _scout_task._scan_one(cid, gid)
+        async with _gsf()() as _db:
+            sc_fail = await _db.get(_CloneAccount, scout_treo_id)
+    finally:
+        _scout_task.scan_group_raw = _orig_scan
+
+    check(f"Scout hong {_SBT} luot lien tiep -> tu cho nghi (cooldown)",
+          sc_fail.status == "cooldown", f"{sc_fail.status} / fails={sc_fail.consecutive_failures}")
+
+    # Luot quet OK reset bo dem hong cua Scout
+    async with _gsf()() as _db:
+        sc = await _db.get(_CloneAccount, scout_treo_id)
+        sc.status = "active"
+        sc.cooldown_until = None
+        sc.consecutive_failures = 2
+        await _db.commit()
+
+    async def _scan_ok(clone, group, cookies=None):
+        return []
+
+    _scout_task.scan_group_raw = _scan_ok
+    try:
+        await _scout_task._scan_one(cid, gid)
+        async with _gsf()() as _db:
+            sc_ok = await _db.get(_CloneAccount, scout_treo_id)
+    finally:
+        _scout_task.scan_group_raw = _orig_scan
+
+    check("Luot quet OK -> reset consecutive_failures ve 0",
+          sc_ok.consecutive_failures == 0, str(sc_ok.consecutive_failures))
+
+    # wrap_scout_error: chi CheckpointError moi thanh ScoutCheckpoint
+    from app.workers.browser_runtime import wrap_scout_error as _wrap
+
+    class CheckpointError(Exception):
+        pass
+
+    _w1 = _wrap(CheckpointError("checkpoint tai /checkpoint/"))
+    check("wrap_scout_error: CheckpointError -> ScoutCheckpoint",
+          isinstance(_w1, _ScoutCheckpoint), type(_w1).__name__)
+    _rt = RuntimeError("loi mang")
+    check("wrap_scout_error: loi khac giu nguyen",
+          _wrap(_rt) is _rt, type(_wrap(_rt)).__name__)
+
+    # ── 14f. Track D: preflight suc khoe nick + phien dang nhap ─────────
+    section("14f. Track D - preflight truoc luot chay that")
+    from app.services import preflight_service as _pf_svc
+    from app.services.preflight_service import run_preflight as _run_preflight
+    from app.services.account_manager import SHADOWBAN_COOLDOWN_THRESHOLD as _PFT
+    from app.config import get_settings as _get_settings
+
+    pf_clone_id = await _mk_poster("Preflight nick 14f")
+
+    # (1) preflight OK -> note_ok reset consecutive_failures
+    async def _probe_ok(clone, cookies=None):
+        return {"ok": True, "reason": "ok"}
+
+    async with _gsf()() as _db:
+        _c = await _db.get(_CloneAccount, pf_clone_id)
+        _c.consecutive_failures = 2
+        await _db.commit()
+        await _run_preflight(_db, _c, prober=_probe_ok)
+        await _db.commit()
+        _c = await _db.get(_CloneAccount, pf_clone_id)
+    check("preflight OK -> reset consecutive_failures ve 0", _c.consecutive_failures == 0,
+          str(_c.consecutive_failures))
+
+    # (2) preflight checkpoint -> clone sang trang thai checkpoint
+    async def _probe_cp(clone, cookies=None):
+        return {"ok": False, "reason": "checkpoint"}
+
+    async with _gsf()() as _db:
+        _c = await _db.get(_CloneAccount, pf_clone_id)
+        await _run_preflight(_db, _c, prober=_probe_cp)
+        await _db.commit()
+        _c = await _db.get(_CloneAccount, pf_clone_id)
+    check("preflight checkpoint -> clone chuyen trang thai checkpoint",
+          _c.status == "checkpoint", _c.status)
+
+    # (3) preflight login_expired lien tiep -> record_failure -> cooldown
+    async def _probe_login(clone, cookies=None):
+        return {"ok": False, "reason": "login_expired"}
+
+    async with _gsf()() as _db:
+        _c = await _db.get(_CloneAccount, pf_clone_id)
+        _c.status = "active"
+        _c.consecutive_failures = 0
+        _c.last_checkpoint_at = None
+        await _db.commit()
+        for _ in range(_PFT):
+            await _run_preflight(_db, _c, prober=_probe_login)
+            await _db.commit()
+        _c = await _db.get(_CloneAccount, pf_clone_id)
+    check(f"preflight login_expired {_PFT} luot -> tu cho nghi (cooldown)",
+          _c.status == "cooldown", f"{_c.status}/fails={_c.consecutive_failures}")
+
+    # (4) Gate execute_publish: preflight hong -> KHONG goi publish_post_real
+    _pf_poster_id = await _mk_poster("Poster gate preflight")
+    _pf_pub_id = await _mk_pub(_pf_poster_id, "Bai gate preflight")
+    _pub_called = []
+
+    async def _pub_spy(clone, group_url, content, cookies=None):
+        _pub_called.append(group_url)
+        return {"status": "published", "post_url": f"{group_url}/posts/1", "error": None}
+
+    _s = _get_settings()
+    _s.preflight_before_run = True
+    _orig_probe = _pf_svc.preflight_check_real
+
+    async def _probe_fail(clone, cookies=None):
+        return {"ok": False, "reason": "login_expired"}
+
+    _pf_svc.preflight_check_real = _probe_fail
+    _op2 = _pub_svc.publish_post_real
+    _pub_svc.publish_post_real = _pub_spy
+    try:
+        async with _gsf()() as _db:
+            _out = await _pub_svc.execute_publish(_db, _pf_pub_id)
+            await _db.commit()
+            _pp = await _db.get(_PostPublish, _pf_pub_id)
+    finally:
+        _pub_svc.publish_post_real = _op2
+        _pf_svc.preflight_check_real = _orig_probe
+        _s.preflight_before_run = False
+    check("Gate publish: preflight hong -> execute_publish tra preflight_failed",
+          _out.get("error") == "preflight_failed", str(_out))
+    check("Gate publish: preflight hong -> KHONG goi publish_post_real",
+          _pub_called == [], str(_pub_called))
+    check("Gate publish: PostPublish -> status failed", _pp.status == "failed", _pp.status)
+
+    # (5) Gate scout: preflight hong -> KHONG goi scan_group_raw
+    _scan_called = []
+
+    async def _scan_spy(clone, group, cookies=None):
+        _scan_called.append(group.id)
+        return []
+
+    _s.preflight_before_run = True
+    _pf_svc.preflight_check_real = _probe_fail
+    _orig_scan2 = _scout_task.scan_group_raw
+    _scout_task.scan_group_raw = _scan_spy
+    try:
+        _out5 = await _scout_task._scan_one(cid, gid)
+    finally:
+        _scout_task.scan_group_raw = _orig_scan2
+        _pf_svc.preflight_check_real = _orig_probe
+        _s.preflight_before_run = False
+    check("Gate scout: preflight hong -> _scan_one tra preflight_failed",
+          _out5.get("error") == "preflight_failed", str(_out5))
+    check("Gate scout: preflight hong -> KHONG goi scan_group_raw",
+          _scan_called == [], str(_scan_called))
+
+    await client.delete(f"/api/publishing/{_pf_pub_id}", headers=auth)
+    for _pid in (pf_clone_id, _pf_poster_id):
+        await client.delete(f"/api/clones/{_pid}", headers=auth)
+
+    await client.delete(f"/api/clones/{scout_treo_id}", headers=auth)
+    await client.delete(f"/api/campaigns/{treo_cid}", headers=auth)
 
     # Don dep clone test
     for cid_item in (scout_id, shooter_id, poster_id, all_id):

@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import {
   IconBarChart,
+  IconBell,
   IconCreditCard,
   IconDashboard,
   IconHeartPulse,
@@ -19,13 +20,14 @@ import {
   IconX,
 } from "@/components/icons";
 import { Badge, Button, cx } from "@/components/ui";
-import { tokens } from "@/lib/api";
+import { api, tokens } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 
 const NAV = [
   { href: "/dashboard", label: "Tổng quan", Icon: IconDashboard },
   { href: "/campaigns", label: "Chiến dịch", Icon: IconLayers },
   { href: "/posts", label: "Bài viết", Icon: IconPosts },
+  { href: "/mentions", label: "Nhắc tới", Icon: IconBell },
   { href: "/clones", label: "Tài khoản clone", Icon: IconUsers },
   { href: "/health", label: "Sức khỏe & Proxy", Icon: IconHeartPulse },
   { href: "/stats", label: "Thống kê", Icon: IconBarChart },
@@ -38,6 +40,24 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [unreadMentions, setUnreadMentions] = useState(0);
+
+  // Badge "Nhắc tới": poll nhẹ mỗi 60s, bỏ qua lỗi (không chặn điều hướng).
+  useEffect(() => {
+    if (!user) return;
+    let alive = true;
+    const load = () =>
+      api
+        .mentionsUnread()
+        .then((r) => alive && setUnreadMentions(r.count))
+        .catch(() => {});
+    load();
+    const timer = setInterval(load, 60_000);
+    return () => {
+      alive = false;
+      clearInterval(timer);
+    };
+  }, [user, pathname]);
 
   // Chặn ngay ở client: không có token thì chuyển hướng đăng nhập
   useEffect(() => {
@@ -125,6 +145,11 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                   )}
                 />
                 <span className="truncate">{item.label}</span>
+                {item.href === "/mentions" && unreadMentions > 0 && (
+                  <span className="ml-auto flex h-5 min-w-5 items-center justify-center rounded-full bg-indigo-600 px-1.5 text-[11px] font-bold text-white dark:bg-indigo-500">
+                    {unreadMentions > 99 ? "99+" : unreadMentions}
+                  </span>
+                )}
               </Link>
             );
           })}
@@ -237,7 +262,12 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                       )}
                     >
                       <item.Icon size={18} />
-                      {item.label}
+                      <span className="flex-1">{item.label}</span>
+                      {item.href === "/mentions" && unreadMentions > 0 && (
+                        <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-indigo-600 px-1.5 text-[11px] font-bold text-white">
+                          {unreadMentions > 99 ? "99+" : unreadMentions}
+                        </span>
+                      )}
                     </Link>
                   );
                 })}

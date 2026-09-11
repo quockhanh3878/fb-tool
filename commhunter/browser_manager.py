@@ -350,6 +350,19 @@ class BrowserManager:
         Returns:
             True nếu session hợp lệ, False nếu cần đăng nhập lại / bị checkpoint.
         """
+        return await self.probe_session_reason(profile_dir, cdp_endpoint) == "ok"
+
+    async def probe_session_reason(
+        self, profile_dir: str, cdp_endpoint: Optional[str] = None
+    ) -> str:
+        """Kiểm tra session và trả về LÝ DO cụ thể (cho preflight — Track D).
+
+        Returns một trong:
+            "ok"            — feed load bình thường, còn đăng nhập.
+            "checkpoint"    — dính checkpoint / xác minh danh tính.
+            "login_expired" — bị đá về trang đăng nhập.
+            "error"         — không mở được browser / lỗi mạng khi kiểm.
+        """
         endpoint = cdp_endpoint or self.default_cdp
         key = f"cdp::{endpoint}" if endpoint else profile_dir
         preexisting = key in self._contexts
@@ -366,21 +379,23 @@ class BrowserManager:
             await page.goto("https://www.facebook.com/", wait_until="domcontentloaded")
             await page.wait_for_timeout(3000)
 
-            if self.detect_checkpoint_url(page.url):
+            url_low = page.url.lower()
+            if any(p in url_low for p in ("checkpoint", "/recover", "confirm")):
                 logger.warning(f"Session bị checkpoint tại: {page.url}")
-                return False
-
-            login_button = await page.query_selector('button[name="login"]')
-            if login_button:
+                return "checkpoint"
+            if await self.detect_checkpoint_page(page):
+                logger.warning("Session dính checkpoint (dò trên DOM)")
+                return "checkpoint"
+            if "login" in url_low or await page.query_selector('button[name="login"]'):
                 logger.warning("Session hết hạn — cần đăng nhập lại")
-                return False
+                return "login_expired"
 
             logger.info("Session hợp lệ")
-            return True
+            return "ok"
 
         except Exception as e:
             logger.error(f"Lỗi kiểm tra session: {e}")
-            return False
+            return "error"
 
         finally:
             # Chỉ dọn context do CHÍNH hàm này vừa tạo. Nếu context đã tồn tại

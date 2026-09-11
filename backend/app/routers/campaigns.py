@@ -21,6 +21,7 @@ from app.schemas import (
     CampaignOut,
     CampaignUpdate,
     GroupCreate,
+    GroupDiscoverOut,
     GroupOut,
     GroupUpdate,
     ExpandOut,
@@ -208,6 +209,38 @@ async def add_group(
     await db.commit()
     await db.refresh(group)
     return group
+
+
+@router.post(
+    "/{campaign_id}/groups/discover",
+    response_model=GroupDiscoverOut,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+async def discover_groups(
+    campaign: Campaign = Depends(owned_campaign),
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Cào hồ sơ clone Scout để lấy danh sách nhóm đã tham gia và nạp vào chiến dịch.
+
+    Chạy nền (Celery) vì phải mở trình duyệt thật. Nhóm mới về ở trạng thái
+    `paused` chờ anh Ber duyệt — làm mới danh sách group sau 1-2 phút.
+    """
+    try:
+        await require_active_subscription(db, user)
+    except SubscriptionInactive as exc:
+        raise _quota_error(exc) from exc
+
+    from app.workers.scout_task import discover_joined_groups
+
+    discover_joined_groups.delay(campaign.id)
+    return GroupDiscoverOut(
+        queued=True,
+        message=(
+            "Đang quét hồ sơ clone Scout để lấy nhóm đã tham gia. "
+            "Làm mới danh sách sau khoảng 1-2 phút."
+        ),
+    )
 
 
 @router.put("/{campaign_id}/groups/{group_id}", response_model=GroupOut)

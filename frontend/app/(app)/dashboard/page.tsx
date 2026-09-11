@@ -106,6 +106,32 @@ export default function DashboardPage() {
         </div>
       </header>
 
+      {/* ── ONBOARDING BANNER NẾU CHƯA CÓ CHIẾN DỊCH HOẶC MUỐN CHẠY LẠI ── */}
+      {data.active_campaigns === 0 && (
+        <div className="relative overflow-hidden rounded-2xl border border-indigo-200/90 bg-gradient-to-r from-indigo-500/10 via-violet-500/10 to-transparent p-5 backdrop-blur-xs dark:border-indigo-900/60 dark:from-indigo-950/40 dark:via-violet-950/30">
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div className="flex items-start gap-3">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-indigo-600 text-white shadow-md shadow-indigo-500/25">
+                <IconSparkles size={20} />
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-slate-900 dark:text-white">
+                  Bắt đầu nhanh với Hướng dẫn thiết lập 5 bước
+                </h3>
+                <p className="mt-1 text-xs text-slate-600 dark:text-slate-400">
+                  Bạn chưa có chiến dịch nào đang kích hoạt. Hãy làm theo hướng dẫn Wizard để cấu hình chiến dịch, nạp clone, thêm nhóm và kịch bản chỉ trong 3 phút.
+                </p>
+              </div>
+            </div>
+            <Link href="/onboarding">
+              <Button size="sm" icon={<IconArrowRight size={15} />}>
+                Chạy hướng dẫn 5 bước
+              </Button>
+            </Link>
+          </div>
+        </div>
+      )}
+
       {/* ── STATS CARDS ─────────────────────────────────────────────────── */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <Stat

@@ -384,11 +384,12 @@ erDiagram
 | `users` | `tier` | `starter`, `pro`, `studio` |
 | `campaigns` | `mode` | `semi_auto`, `full_auto` |
 | `campaign_groups` | `status` | `active`, `pending_join`, `blocked`, `paused` |
-| `clone_accounts` | `role` | `scout`, `shooter`, `both` |
+| `clone_accounts` | `role` | `scout`, `shooter`, `poster`, `both`, `all` |
 | `clone_accounts` | `status` | `active`, `warming_up`, `cooldown`, `checkpoint`, `banned` |
 | `comment_scripts` | `type` | `spintax`, `ai_contextual` |
 | `discovered_posts` | `status` | `new`, `notified`, `commented`, `skipped`, `expired` |
 | `comment_actions` | `status` | `queued`, `in_progress`, `success`, `failed`, `shadowbanned` |
+| `mentions` | `status` | `new`, `read`, `archived` |
 | `account_health_logs` | `event_type` | `login_ok`, `checkpoint`, `comment_blocked`, `rate_limited`, `banned`, `warmup_done` |
 | `subscriptions` | `plan` | `starter`, `pro`, `studio` |
 | `subscriptions` | `payment_status` | `active`, `expired`, `cancelled` |

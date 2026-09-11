@@ -22,6 +22,8 @@ import type {
   HealthSummary,
   IngestResult,
   LintReport,
+  Mention,
+  MentionList,
   PaymentIntent,
   PlanSpec,
   Post,
@@ -202,6 +204,11 @@ export const api = {
     }),
   deleteGroup: (campaignId: string, groupId: string) =>
     request<void>(`/api/campaigns/${campaignId}/groups/${groupId}`, { method: "DELETE" }),
+  discoverGroups: (campaignId: string) =>
+    request<{ queued: boolean; message: string }>(
+      `/api/campaigns/${campaignId}/groups/discover`,
+      { method: "POST" },
+    ),
 
   // ── Kịch bản ───────────────────────────────────────────────────────────
   scripts: (campaignId: string) => request<Script[]>(`/api/campaigns/${campaignId}/scripts`),
@@ -293,6 +300,17 @@ export const api = {
     request<PostPublish>(`/api/publishing/${id}/publish-now`, { method: "POST" }),
   deletePublishingPost: (id: string) =>
     request<void>(`/api/publishing/${id}`, { method: "DELETE" }),
+
+  // ── Hộp thư "Nhắc tới" ────────────────────────────────────────────────
+  mentions: (
+    params: { campaign_id?: string; status?: string; limit?: number; offset?: number } = {},
+  ) => request<MentionList>(`/api/mentions${qs(params)}`),
+  mentionsUnread: () => request<{ count: number }>("/api/mentions/unread-count"),
+  markMentionRead: (id: string) =>
+    request<Mention>(`/api/mentions/${id}/read`, { method: "POST" }),
+  archiveMention: (id: string) =>
+    request<Mention>(`/api/mentions/${id}/archive`, { method: "POST" }),
+  deleteMention: (id: string) => request<void>(`/api/mentions/${id}`, { method: "DELETE" }),
 
   // ── Hàng đợi ───────────────────────────────────────────────────────────
   queue: () => request<CommentAction[]>("/api/queue"),

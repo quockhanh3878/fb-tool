@@ -271,6 +271,8 @@ export const VI_LABEL: Record<string, string> = {
   shadowbanned: "Nghi shadowban",
   banned: "Bị khóa",
   new: "Mới",
+  read: "Đã đọc",
+  archived: "Đã lưu trữ",
   analyzing: "Đang lọc",
   matched: "Phù hợp",
   notified: "Đã báo",

@@ -148,3 +148,22 @@ class NotificationService:
         body = f"👤 Bài của: {post.author_name}\n"
         body += f"💬 Comment:\n{comment_text}" if success else f"⚠️ Lỗi: {error}"
         return await self.send_text(chat_id, f"{head}\n\n{body}")
+
+
+async def build_clone_notifier(db):
+    """Trả về async callable `(user_id, message)` bắn Telegram cho chủ của clone.
+
+    Dùng chung cho mọi worker cần đưa cảnh báo vòng đời clone (checkpoint,
+    tự-nghỉ khi chạy "mode treo") qua `AccountManager(db, notifier=...)`.
+    Chủ chưa liên kết Telegram thì im lặng bỏ qua.
+    """
+    from app.models.user import User
+
+    service = NotificationService()
+
+    async def send(user_id: str, message: str) -> None:
+        user = await db.get(User, user_id)
+        if user and user.telegram_chat_id:
+            await service.send_text(user.telegram_chat_id, message)
+
+    return send

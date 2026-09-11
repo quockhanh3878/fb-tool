@@ -25,6 +25,7 @@ from app.schemas import (
     PostPublishUpdate,
 )
 from app.services.ai_service import AIService
+from app.services.mention_service import detect_mentions, notify_mentions
 from app.services.notification_service import NotificationService
 from app.services.pipeline import (
     build_comment,
@@ -190,8 +191,10 @@ async def ingest_posts(
     stats = await process_campaign_posts(
         db, campaign, fresh, _ai_service(), notifier=NotificationService(), user=user
     )
+    mentions = await detect_mentions(db, campaign, group, fresh)
     await db.commit()
-    return IngestResultOut(ingested=len(fresh), **stats)
+    await notify_mentions(user, campaign.name, mentions)
+    return IngestResultOut(ingested=len(fresh), mentions=len(mentions), **stats)
 
 
 @router.get("/queue", response_model=list[CommentActionOut])

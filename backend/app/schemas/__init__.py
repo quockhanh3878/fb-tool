@@ -73,6 +73,7 @@ class CampaignBase(BaseModel):
     service_strengths: str = ""
     landing_page_note: str = ""
     ai_filter_prompt: str = ""
+    mention_keywords: list[str] = Field(default_factory=list)
     whitelist_keywords: list[str] = Field(default_factory=list)
     blacklist_keywords: list[str] = Field(default_factory=list)
     min_relevance_score: float = Field(default=0.7, ge=0.0, le=1.0)
@@ -102,6 +103,7 @@ class CampaignUpdate(BaseModel):
     service_strengths: str | None = None
     landing_page_note: str | None = None
     ai_filter_prompt: str | None = None
+    mention_keywords: list[str] | None = None
     whitelist_keywords: list[str] | None = None
     blacklist_keywords: list[str] | None = None
     min_relevance_score: float | None = Field(default=None, ge=0.0, le=1.0)
@@ -121,6 +123,7 @@ class CampaignOut(ORMModel):
     service_strengths: str
     landing_page_note: str
     ai_filter_prompt: str
+    mention_keywords: list[str] = Field(default_factory=list)
     whitelist_keywords: list[str]
     blacklist_keywords: list[str]
     min_relevance_score: float
@@ -154,6 +157,11 @@ class GroupOut(ORMModel):
     status: str
     scan_interval_minutes: int
     last_scanned_at: datetime | None = None
+
+
+class GroupDiscoverOut(BaseModel):
+    queued: bool
+    message: str
 
 
 # ── Script ─────────────────────────────────────────────────────────────────
@@ -330,11 +338,38 @@ class IngestResultOut(BaseModel):
     notified: int
     queued: int
     skipped: int
+    mentions: int = 0
 
 
 class ApplyRequest(BaseModel):
     comment_text: str | None = None
     clone_id: str | None = None
+
+
+# ── Hộp thư "Nhắc tới" ─────────────────────────────────────────────────────
+class MentionOut(ORMModel):
+    id: str
+    campaign_id: str
+    campaign_group_id: str | None = None
+    discovered_post_id: str | None = None
+    matched_keywords: list[str] = Field(default_factory=list)
+    author_name: str
+    content_text: str
+    post_url: str
+    status: str
+    discovered_at: datetime
+    seen_at: datetime | None = None
+
+
+class MentionListOut(BaseModel):
+    items: list[MentionOut]
+    total: int
+    limit: int
+    offset: int
+
+
+class MentionUnreadOut(BaseModel):
+    count: int
 
 
 # ── Bump ───────────────────────────────────────────────────────────────────

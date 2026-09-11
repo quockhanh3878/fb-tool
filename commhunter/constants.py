@@ -100,6 +100,7 @@ PAGE_LOAD_WAIT_MAX_MS = 4000
 SCROLL_WAIT_MIN_MS = 1500
 SCROLL_WAIT_MAX_MS = 2500
 SCROLL_PASSES = 4              # Số lần cuộn feed khi quét group
+GROUPS_SCROLL_PASSES = 10      # Trang "Nhóm của bạn" dài hơn feed nên cuộn nhiều hơn
 WARMUP_DURATION_MIN_SEC = 30   # Lướt newsfeed trước khi comment
 WARMUP_DURATION_MAX_SEC = 60
 
@@ -132,12 +133,106 @@ CURSOR_JIGGLE_PROBABILITY = 0.03
 COMMENT_BOX_SELECTORS = [
     '[aria-label*="Write a comment"][contenteditable="true"]',
     '[aria-label*="Viết bình luận"][contenteditable="true"]',
+    # Group kiểu hỏi-đáp/thảo luận: ô nhập là "Viết câu trả lời..."
+    # (xác nhận DOM group thật 2026-09-10).
+    '[aria-label*="Viết câu trả lời"][contenteditable="true"]',
+    '[aria-label*="Write an answer"][contenteditable="true"]',
     '[aria-label*="Comment as"][contenteditable="true"]',
     '[aria-label*="Bình luận với tư cách"][contenteditable="true"]',
     'div[role="textbox"][contenteditable="true"]',
 ]
 
 FEED_SELECTOR = '[role="feed"] > *'
+
+# ── Post Composer (đăng bài / seeding vào group) ───────────────────────────
+# Đã soi DOM group thật 2026-09-10 (group "Hội BMW"): nút mở là
+# div[role="button"] text "Bạn viết gì đi..."; dialog heading "Tạo bài viết",
+# ô nhập là [role="textbox"][contenteditable] KHÔNG còn aria-label mô tả; nút
+# Đăng có aria-label="Đăng" và aria-disabled="true" tới khi có nội dung.
+# Nhánh gọi vẫn phải fail an toàn (dừng nick, không thử mù) khi không khớp.
+COMPOSER_TRIGGER_SELECTORS = [
+    'div[role="button"]:has-text("Bạn viết gì đi")',
+    'div[role="button"]:has-text("Write something")',
+    '[role="button"]:has-text("Bạn viết gì đi")',
+    '[role="button"]:has-text("Bạn đang nghĩ gì")',
+    '[role="button"]:has-text("Viết gì đó")',
+]
+COMPOSER_TEXTBOX_SELECTORS = [
+    '[role="dialog"] [role="textbox"][contenteditable="true"]',
+    '[role="dialog"] div[role="textbox"]',
+    '[aria-label*="Tạo bài viết"][contenteditable="true"]',
+    '[aria-label*="Create a public post"][contenteditable="true"]',
+]
+# aria-disabled="true" khi ô nhập còn trống — chỉ bấm nút đã bật.
+COMPOSER_SUBMIT_SELECTORS = [
+    '[role="dialog"] [aria-label="Đăng"]:not([aria-disabled="true"])',
+    '[role="dialog"] [aria-label="Post"]:not([aria-disabled="true"])',
+    '[role="dialog"] div[role="button"]:has-text("Đăng"):not([aria-disabled="true"])',
+    '[role="dialog"] div[role="button"]:has-text("Post"):not([aria-disabled="true"])',
+    '[role="dialog"] [aria-label="Đăng"]',
+    '[role="dialog"] [aria-label="Post"]',
+]
+# Cụm từ báo bài đã lên (toast / trạng thái sau khi submit). KHÔNG dùng "đã đăng"
+# trần — cụm này nằm rải rác khắp UI (nhãn mốc thời gian…) dễ gây dương tính giả.
+POST_SUCCESS_PHRASES = [
+    "bài viết của bạn đã được đăng", "your post is now published",
+    "post published", "đã chia sẻ bài viết của bạn",
+    "đang chờ phê duyệt", "pending approval",
+    "sẽ hiển thị sau khi được phê duyệt", "will be visible once approved",
+]
+# Chờ tối đa bao lâu để hộp thoại soạn bài đóng sau khi bấm Đăng (poll 2s/lần).
+POST_SUBMIT_CONFIRM_TIMEOUT_MS = 14000
+# Số lần cuộn feed nhóm khi đi tìm lại permalink của bài vừa đăng.
+COMPOSER_VERIFY_SCROLL_PASSES = 3
+
+# FB đời mới (soi DOM thật 2026-09-10, group không kiểm duyệt) KHÔNG còn nhả
+# permalink sạch vào href của mốc thời gian — href chỉ là "?__cft__[0]=...#?xxx"
+# và chữ mốc thời gian bị xáo span chống scrape. Đường chắc ăn: đánh dấu đúng
+# thẻ <a> mốc thời gian của bài chứa lát text rồi CLICK, FB tự điều hướng sang
+# URL chuẩn /groups/<gid>/posts/<id>/. JS này nhận [textFragment], gắn thuộc
+# tính data-cth-permalink lên thẻ cần click, trả về true/false.
+MARK_TIMESTAMP_ANCHOR_JS = r"""([textFragment]) => {
+    const clean = (s) => (s || '').replace(/\s+/g, ' ').trim().toLowerCase();
+    const needle = clean(textFragment);
+    if (!needle || needle.length < 12) return false;
+    document.querySelectorAll('[data-cth-permalink]').forEach(
+        (el) => el.removeAttribute('data-cth-permalink')
+    );
+    const kids = [...document.querySelectorAll('[role="feed"] > *')];
+    const story = kids.find((k) => clean(k.textContent || '').includes(needle));
+    if (!story) return false;
+    const links = [...story.querySelectorAll('a[href]')];
+    // Ưu tiên href đã có sẵn path permalink (một số phiên bản/locale còn nhả).
+    for (const a of links) {
+        if (/\/(posts|permalink)\//.test(a.getAttribute('href') || '')) {
+            a.setAttribute('data-cth-permalink', '1');
+            return true;
+        }
+    }
+    // Không có -> thẻ mốc thời gian: href bắt đầu bằng '?' và có '#?' hoặc
+    // tham số __tn__=,O, (KHÔNG phải link '/user/' của tác giả).
+    for (const a of links) {
+        const h = a.getAttribute('href') || '';
+        if (h.includes('/user/')) continue;
+        if (h.startsWith('?') && (h.includes('#?') || h.includes('__tn__=%2CO'))) {
+            a.setAttribute('data-cth-permalink', '1');
+            return true;
+        }
+    }
+    return false;
+}"""
+MARK_TIMESTAMP_ANCHOR_SELECTOR = 'a[data-cth-permalink]'
+# Rút permalink chuẩn từ URL bài (bỏ query tracking + hash).
+PERMALINK_URL_RE = (
+    r"https://(?:www|m|web|mbasic)\.facebook\.com/"
+    r"(?:groups/\d+/(?:posts|permalink)|[^/?#]+/(?:posts|permalink)|permalink)"
+    r"/[^/?#]+"
+)
+
+# ── Group Discovery ────────────────────────────────────────────────────────
+# Trang liệt kê các nhóm tài khoản đã tham gia. Danh sách "group key" là trang
+# chức năng cần loại (joins, feed, discover…) nằm ngay trong EXTRACT_GROUPS_JS.
+JOINED_GROUPS_URL = "https://www.facebook.com/groups/joins/"
 
 # Nút "..." trên chính bình luận của mình (mở menu Chỉnh sửa / Xóa).
 # aria-label xác nhận qua DOM group thật 2026-09.
@@ -147,6 +242,40 @@ OWN_COMMENT_MENU_LABELS = [
 ]
 COMMENT_DELETE_MENU_TEXTS = ["Xóa", "Xoá", "Delete"]
 COMMENT_DELETE_CONFIRM_HEADINGS = ["Xóa bình luận", "Delete comment"]
+
+# Xoá bài viết CHÍNH mình đã đăng (đường rollback / cleanup của publish_post).
+# DOM group thật 2026-09-10: nút mở menu là [aria-haspopup="menu"] có aria-label
+# "Hành động đối với bài viết này của <tên nick>" -> menu item "Xóa bài viết" /
+# "Chuyển vào thùng rác" -> hộp thoại xác nhận -> nút "Xóa" / "Chuyển".
+OWN_POST_MENU_SELECTORS = [
+    '[aria-haspopup="menu"][aria-label*="Hành động đối với bài viết này"]',
+    '[aria-haspopup="menu"][aria-label*="Actions for this post"]',
+]
+# Trang permalink của FB đời mới nhồi thêm bài "được đề xuất" / quảng cáo có
+# cùng nút "Hành động đối với bài viết này..." -> query_selector đầu tiên hay
+# trúng bài NGƯỜI KHÁC. Lọc theo tên tài khoản đang đăng nhập ("... của <tên>")
+# mới chắc chắn xoá đúng bài mình. Các mẫu aria-label kèm tên:
+OWN_POST_MENU_ARIA_NAMED = [
+    'Hành động đối với bài viết này của {name}',
+    'Actions for this post by {name}',
+]
+# Bóc tên tài khoản đang đăng nhập từ payload bootstrap của trang.
+CURRENT_ACCOUNT_NAME_RE = r'"NAME":"([^"]{1,80})","SHORT_NAME"'
+OWN_POST_DELETE_MENU_TEXTS = [
+    "Xóa bài viết", "Xoá bài viết", "Chuyển vào thùng rác",
+    "Move to trash", "Delete post",
+]
+# Chữ nhận diện hộp thoại xác nhận (so khớp không phân biệt hoa thường).
+OWN_POST_DELETE_CONFIRM_HINTS = ["xóa", "xoá", "thùng rác", "trash", "delete", "move to"]
+# Nhãn nút xác nhận — KHỚP TUYỆT ĐỐI để không bắt nhầm tiêu đề
+# "Xóa bài viết vĩnh viễn?" hay nút "Xác nhận" của luồng khác.
+OWN_POST_DELETE_CONFIRM_BUTTON_TEXTS = ["Xóa", "Xoá", "Chuyển", "Delete", "Move"]
+# Dấu hiệu bài đã biến mất khi mở lại permalink (verify sau khi xoá).
+POST_GONE_MARKERS = [
+    "không tìm thấy", "nội dung không khả dụng", "bài viết không khả dụng",
+    "content isn't available", "this content isn't available",
+    "bạn hiện không xem được nội dung này",
+]
 
 # ── Checkpoint / Login Detection ───────────────────────────────────────────
 CHECKPOINT_URL_PATTERNS = [
@@ -275,4 +404,66 @@ EXTRACT_POST_JS = r"""(el) => {
         images: imageCount,
         commentCount: commentCount,
     };
+}"""
+
+# JS bóc danh sách nhóm từ trang "Nhóm của bạn". Chỉ ĐỌC href, không click.
+# DOM Facebook là đầu vào không tin cậy: trả mảng rỗng khi không khớp gì để
+# nhánh gọi fail an toàn, không bao giờ ném lỗi.
+EXTRACT_GROUPS_JS = r"""() => {
+    const RESERVED = new Set([
+        'joins','feed','discover','create','category','search','browse',
+        'pending','requests','activity','notifications',
+        'your-groups-and-communities'
+    ]);
+    const found = {};
+    for (const a of document.querySelectorAll('a[href*="/groups/"]')) {
+        const href = a.getAttribute('href') || '';
+        const m = href.match(/^(?:https?:\/\/[^/]+)?\/groups\/([^/?#]+)\/?(?:[?#].*)?$/);
+        if (!m) continue;
+        const key = m[1];
+        if (!key || RESERVED.has(key)) continue;
+        let name = (a.textContent || '').replace(/\s+/g, ' ').trim();
+        // textContent nối luôn cả metadata "Lần hoạt động gần nhất: ..." /
+        // "Bạn và N người bạn khác..." — cắt bỏ để lấy đúng tên nhóm
+        // (xác nhận DOM trang /groups/joins/ thật 2026-09-10).
+        name = name.split(/Lần hoạt động|Last active|Bạn và |You and |·/)[0].trim();
+        if (name.length > 120) name = name.slice(0, 120).trim();
+        if (!(key in found) || (!found[key] && name)) found[key] = name;
+    }
+    return Object.keys(found).map(k => ({
+        key: k,
+        name: found[k] || k,
+        url: 'https://www.facebook.com/groups/' + k + '/',
+    }));
+}"""
+
+# JS tìm lại permalink của bài VỪA ĐĂNG trong feed nhóm, khớp theo một lát text.
+# Nhận [textFragment]: chuỗi ~40-80 ký tự lấy từ nội dung bài. Trả về permalink
+# sạch hoặc '' nếu không tìm thấy (nhánh gọi coi đó là published_no_url).
+EXTRACT_LATEST_POST_JS = r"""([textFragment]) => {
+    const clean = (s) => (s || '').replace(/\s+/g, ' ').trim().toLowerCase();
+    const needle = clean(textFragment);
+    if (!needle || needle.length < 12) return '';
+
+    const cleanLink = (href) => {
+        if (!href) return '';
+        let m = href.match(/\/groups\/(\d+)\/(?:posts|permalink)\/(\d+)/);
+        if (m) return 'https://www.facebook.com/groups/' + m[1] + '/posts/' + m[2] + '/';
+        m = href.match(/facebook\.com\/[^\/]+\/(?:posts|permalink)\/(\d+)/);
+        if (m && !href.includes('/photo')) {
+            try { const u = new URL(href, location.origin); return u.origin + u.pathname; } catch (e) {}
+        }
+        return '';
+    };
+
+    const nodes = document.querySelectorAll('[role="feed"] > *');
+    for (const el of nodes) {
+        const body = clean(el.textContent || '');
+        if (!body.includes(needle)) continue;
+        for (const a of el.querySelectorAll('a[href]')) {
+            const c = cleanLink(a.getAttribute('href') || a.href || '');
+            if (c) return c;
+        }
+    }
+    return '';
 }"""

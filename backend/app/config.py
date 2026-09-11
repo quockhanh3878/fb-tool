@@ -56,6 +56,18 @@ class Settings(BaseSettings):
     # ── Runtime ─────────────────────────────────────────────────────────
     browser_profiles_root: str = "data/browser_profiles"
 
+    # Địa chỉ CDP để worker attach vào một Chrome đang mở sẵn (ví dụ
+    # "http://localhost:9222") thay vì tự mở profile persistent cho từng clone.
+    # Chỉ dùng cho dev/test trên máy anh Ber — production để rỗng, mỗi clone
+    # chạy profile + vân tay riêng như thiết kế đã chốt.
+    browser_cdp_endpoint: str = ""
+
+    # Track D — preflight: khi bật, Scout/Poster mở browser kiểm tra nick còn
+    # đăng nhập + không checkpoint TRƯỚC mỗi lượt quét/đăng. Mặc định tắt: thêm
+    # một lần mở browser cho mỗi lượt (chậm ~30-60s), chỉ bật khi chạy dài không
+    # người trực. Nick không đạt preflight bị dừng qua state machine.
+    preflight_before_run: bool = False
+
 
 @lru_cache
 def get_settings() -> Settings:

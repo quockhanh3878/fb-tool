@@ -10,11 +10,10 @@ from sqlalchemy import select
 from app.database import get_session_factory
 from app.models.clone_account import CloneAccount, Proxy
 from app.models.enums import AccountState, AccountTransition, HealthEventType, ProxyStatus
-from app.models.user import User
 from app.services.account_check import read_cookie_health
 from app.services.account_manager import AccountManager
 from app.services.facebook_utils import EXPIRY_WARNING_DAYS
-from app.services.notification_service import NotificationService
+from app.services.notification_service import build_clone_notifier
 from app.services.proxy_manager import ProxyManager, check_proxy_health
 from app.workers.celery_app import celery_app, run_async
 
@@ -28,14 +27,7 @@ def cookies_look_valid(cookies) -> bool:
 
 
 async def _notifier(db):
-    service = NotificationService()
-
-    async def send(user_id: str, message: str) -> None:
-        user = await db.get(User, user_id)
-        if user and user.telegram_chat_id:
-            await service.send_text(user.telegram_chat_id, message)
-
-    return send
+    return await build_clone_notifier(db)
 
 
 async def _check_all() -> dict:

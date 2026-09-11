@@ -30,6 +30,21 @@ class CommentStatus(Enum):
     SHADOWBANNED = "shadowbanned"
 
 
+class PublishStatus(Enum):
+    """Kết quả đăng bài seeding vào 1 group."""
+    PUBLISHED = "published"                # đăng xong, đã xác minh permalink
+    PUBLISHED_NO_URL = "published_no_url"  # đăng xong nhưng không bóc được link
+    FAILED = "failed"                      # không đăng được (selector, checkpoint...)
+
+
+@dataclass
+class PublishResult:
+    """Kết quả một lần đăng bài vào một group."""
+    status: PublishStatus
+    post_url: Optional[str] = None
+    error: Optional[str] = None
+
+
 @dataclass
 class DiscoveredPost:
     """Bài viết được tìm thấy từ Scout."""

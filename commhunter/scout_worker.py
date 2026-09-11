@@ -39,8 +39,11 @@ from loguru import logger
 
 from browser_manager import BrowserManager
 from constants import (
+    EXTRACT_GROUPS_JS,
     EXTRACT_POST_JS,
     FEED_SELECTOR,
+    GROUPS_SCROLL_PASSES,
+    JOINED_GROUPS_URL,
     PAGE_LOAD_WAIT_MIN_MS,
     PAGE_LOAD_WAIT_MAX_MS,
     SCROLL_WAIT_MIN_MS,
@@ -176,6 +179,77 @@ class ScoutWorker:
             logger.error(f"Lỗi quét group {group_url}: {e}")
 
         return posts
+
+    async def scrape_joined_groups(self, limit: int = 300) -> List[dict]:
+        """Mở trang "Nhóm của bạn" của tài khoản Scout, cuộn và bóc danh sách nhóm đã tham gia.
+
+        Chỉ ĐỌC — không join, không rời nhóm, không tương tác gì khác.
+
+        Returns:
+            Danh sách dict {key, name, url}. Rỗng nếu không bóc được gì
+            (selector đổi hoặc tài khoản chưa tham gia nhóm nào).
+
+        Raises:
+            CheckpointError: nếu tài khoản Scout bị checkpoint / bị đá về trang đăng nhập.
+        """
+        page = await self._get_page()
+
+        try:
+            logger.info("Scout: đang lấy danh sách nhóm đã tham gia")
+            await page.goto(JOINED_GROUPS_URL, wait_until="domcontentloaded")
+            await page.wait_for_timeout(
+                random.randint(PAGE_LOAD_WAIT_MIN_MS, PAGE_LOAD_WAIT_MAX_MS)
+            )
+
+            current_url = page.url
+            if BrowserManager.detect_checkpoint_url(current_url):
+                raise CheckpointError(f"Scout account bị checkpoint tại {current_url}")
+            if "login" in current_url.lower():
+                raise CheckpointError(f"Scout cần đăng nhập lại: {current_url}")
+
+            for i in range(GROUPS_SCROLL_PASSES):
+                await page.evaluate(
+                    f"window.scrollBy(0, {random.randint(800, 1400)})"
+                )
+                await page.wait_for_timeout(
+                    random.randint(SCROLL_WAIT_MIN_MS, SCROLL_WAIT_MAX_MS)
+                )
+                logger.debug(f"Cuộn danh sách nhóm lần {i + 1}/{GROUPS_SCROLL_PASSES}")
+
+            raw = await page.evaluate(EXTRACT_GROUPS_JS)
+            if not raw:
+                logger.warning(
+                    "Không bóc được nhóm nào từ trang 'Nhóm của bạn' — "
+                    "selector có thể đã đổi hoặc tài khoản chưa tham gia nhóm nào"
+                )
+                return []
+
+            seen = set()
+            groups: List[dict] = []
+            for item in raw:
+                key = (item or {}).get("key", "")
+                if not key or key in seen:
+                    continue
+                seen.add(key)
+                groups.append(
+                    {
+                        "key": key,
+                        "name": (item.get("name") or key).strip(),
+                        "url": item.get("url")
+                        or f"https://www.facebook.com/groups/{key}/",
+                    }
+                )
+                if len(groups) >= limit:
+                    break
+
+            logger.info(f"Lấy được {len(groups)} nhóm đã tham gia")
+            return groups
+
+        except CheckpointError:
+            raise
+        except Exception as e:
+            logger.error(f"Lỗi lấy danh sách nhóm đã tham gia: {e}")
+            return []
 
     def filter_new_posts(
         self, posts: List[DiscoveredPost], dedup_store: DedupStore

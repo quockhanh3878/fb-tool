@@ -65,7 +65,7 @@ fb-tool/
 │   ├── config_loader.py / models.py / constants.py
 │   ├── requirements.txt
 │   ├── configs/example.yaml                  # Config mẫu (bí mật đọc từ .env)
-│   ├── tests/test_pipeline.py                # Smoke test offline (104 assertion)
+│   ├── tests/test_pipeline.py                # Smoke test offline (116 assertion)
 │   └── data/                                 # Runtime — ĐÃ bị .gitignore chặn
 │
 ├── backend/                                  # API SaaS ĐA KHÁCH HÀNG (Phase 2-4)
@@ -80,14 +80,14 @@ fb-tool/
 │   │   │                                     #   account state machine, proxy, quota
 │   │   └── workers/                          # Celery: scout, shooter, bump,
 │   │                                         #   warm-up, health-check
-│   ├── alembic/                              # Migration (0001 = 11 bảng)
-│   ├── tests/test_api.py                     # 132 assertion offline (SQLite)
+│   ├── alembic/                              # Migration (0001 = 11 bảng, 0003 = hộp thư Nhắc tới)
+│   ├── tests/test_api.py                     # 314 assertion offline (SQLite)
 │   ├── requirements.txt / Dockerfile / docker-compose.yaml
 │
 ├── frontend/                                 # DASHBOARD Next.js 16 + Tailwind 4
-│   ├── app/                                  # 12 route: login, register, dashboard,
-│   │                                         #   campaigns, posts, clones, health,
-│   │                                         #   stats, billing, settings
+│   ├── app/                                  # login, register, dashboard, campaigns,
+│   │                                         #   posts, mentions, clones, health,
+│   │                                         #   stats, billing, settings, onboarding
 │   ├── lib/api.ts                            # Client JWT + tự làm mới token
 │   ├── components/ui.tsx                     # Bộ thành phần dùng chung
 │   └── Dockerfile
@@ -142,6 +142,10 @@ copy commhunter\configs\example.yaml commhunter\configs\khach.yaml   # sửa cho
   (hoặc `browser.attach_cdp`) để cắm vào một Chrome đang chạy sẵn đã đăng nhập,
   phục vụ test tay. Mở Chrome kèm cờ `--remote-debugging-port=9222`. Khi attach:
   không spoof vân tay, không áp proxy, không tự đóng browser của bạn.
+  - **Backend (worker Celery)**: đặt biến môi trường `BROWSER_CDP_ENDPOINT=http://localhost:9222`
+    trong `backend/.env` — mọi thao tác trình duyệt (Scout quét nhóm, Shooter
+    comment/đăng bài) attach vào Chrome đó, clone **không cần** `cookie_data_encrypted`.
+    Chỉ dùng cho dev/test trên máy anh Ber; production để rỗng.
 
 > **Sprint 0 Hardening đã hoàn thành.** 4 lỗi mức nặng (warmup click bừa, verify dương tính giả, rate limit đếm sai, không có circuit-breaker) đã được xử lý triệt để. Bộ test pipeline offline đạt **104/104 PASS**. Hệ thống an toàn và sẵn sàng bước vào Sprint 3 kiểm thử trên Facebook thật.
 
@@ -170,7 +174,7 @@ cd backend
 $env:DATABASE_URL = "sqlite+aiosqlite:///./data/commhunter_api.db"
 ..\.venv\Scripts\alembic.exe upgrade head
 ..\.venv\Scripts\uvicorn.exe app.main:app --reload   # http://localhost:8000/docs
-..\.venv\Scripts\python.exe tests\test_api.py        # 243/243 PASS, offline
+..\.venv\Scripts\python.exe tests\test_api.py        # 314/314 PASS, offline
 
 cd ..\frontend
 npm install; npm run dev                             # http://localhost:3000
@@ -198,11 +202,11 @@ Chi tiết thiết kế: [DELIVERY_STATUS §4b](docs/plans/DELIVERY_STATUS.md).
 
 | Bộ test | Phạm vi | Kết quả |
 |---|---|---|
-| `commhunter/tests/test_pipeline.py` | Phase 1: pipeline CLI, anti-ban, hồi quy nợ kỹ thuật | **104/104 PASS** |
-| `backend/tests/test_api.py` | Phase 2-4: 51 path / 65 operation, cách ly đa khách, quota, máy trạng thái, worker, xoay vòng & chống trùng | **243/243 PASS** |
+| `commhunter/tests/test_pipeline.py` | Phase 1: pipeline CLI, anti-ban, hồi quy nợ kỹ thuật | **116/116 PASS** |
+| `backend/tests/test_api.py` | Phase 2-4: 68 path / 86 operation, cách ly đa khách, quota, máy trạng thái, worker, xoay vòng & chống trùng, đăng bài thật (E2E backend trên burner), preflight nick, hộp thư Nhắc tới | **314/314 PASS** |
 | `commhunter/tests/test_templates.py` | Kho mẫu comment, chống lặp lời | **8/8 PASS** |
 | `commhunter/tests/test_browser.py` | Vân tay + cấu hình trình duyệt | **23/23 PASS** |
-| `npx next build` (frontend) | 13 route, TypeScript strict | **0 lỗi** |
+| `npx next build` (frontend) | 15 route, TypeScript strict | **0 lỗi** |
 
 Cả hai bộ test chạy **hoàn toàn offline** — không cần Facebook, OpenAI, Docker hay mạng.
 
