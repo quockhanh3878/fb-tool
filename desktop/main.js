@@ -22,6 +22,7 @@ let backendProc = null;
 let frontendProc = null;
 let mainWindow = null;
 let splashWindow = null;
+let appLogPath = null;
 
 function userDataPaths() {
   const root = app.getPath("userData");
@@ -30,6 +31,21 @@ function userDataPaths() {
   fs.mkdirSync(dataDir, { recursive: true });
   fs.mkdirSync(logDir, { recursive: true });
   return { root, dataDir, logDir };
+}
+
+// Nhat ky vong doi cua chinh Electron shell (khac backend.log/frontend.log
+// la stdout/stderr cua 2 sidecar) — de anh Ber gui lai khi ban demo bi loi
+// ma khong phai do backend/frontend (crash sidecar, spawn that bai...).
+function logLine(message) {
+  const line = `[${new Date().toISOString()}] ${message}\n`;
+  process.stdout.write(line);
+  if (appLogPath) {
+    try {
+      fs.appendFileSync(appLogPath, line, "utf8");
+    } catch (_err) {
+      // Ghi log that bai thi bo qua, khong lam sap ung dung vi log.
+    }
+  }
 }
 
 function toSqliteUrl(dataDir) {
@@ -136,6 +152,9 @@ function startBackend(logDir, dataDir, root) {
   );
   proc.stdout.pipe(logStream);
   proc.stderr.pipe(logStream);
+  proc.on("exit", (code, signal) => {
+    logLine(`backend thoat (code=${code}, signal=${signal})`);
+  });
   return proc;
 }
 
@@ -154,16 +173,23 @@ function startFrontend(logDir) {
   });
   proc.stdout.pipe(logStream);
   proc.stderr.pipe(logStream);
+  proc.on("exit", (code, signal) => {
+    logLine(`frontend thoat (code=${code}, signal=${signal})`);
+  });
   return proc;
 }
 
 async function boot() {
   const { root, dataDir, logDir } = userDataPaths();
+  appLogPath = path.join(logDir, "app.log");
+  logLine(`Khoi dong CommHunter AI desktop (userData=${root})`);
   showSplash();
 
   backendProc = startBackend(logDir, dataDir, root);
+  logLine(`Backend spawn xong (pid=${backendProc.pid}), cho health check...`);
   const backendOk = await waitForHealth(`http://127.0.0.1:${BACKEND_PORT}/health`, HEALTH_TIMEOUT_MS);
   if (!backendOk) {
+    logLine(`Backend khong phan hoi sau ${HEALTH_TIMEOUT_MS / 1000}s — huy khoi dong.`);
     dialog.showErrorBox(
       "Khong khoi dong duoc",
       `Backend khong phan hoi sau ${HEALTH_TIMEOUT_MS / 1000}s.\n` +
@@ -172,10 +198,13 @@ async function boot() {
     app.quit();
     return;
   }
+  logLine("Backend san sang.");
 
   frontendProc = startFrontend(logDir);
+  logLine(`Frontend spawn xong (pid=${frontendProc.pid}), cho health check...`);
   const frontendOk = await waitForHealth(`http://127.0.0.1:${FRONTEND_PORT}`, HEALTH_TIMEOUT_MS);
   if (!frontendOk) {
+    logLine(`Frontend khong phan hoi sau ${HEALTH_TIMEOUT_MS / 1000}s — huy khoi dong.`);
     dialog.showErrorBox(
       "Khong khoi dong duoc",
       `Dashboard khong phan hoi sau ${HEALTH_TIMEOUT_MS / 1000}s.\n` +
@@ -184,6 +213,7 @@ async function boot() {
     app.quit();
     return;
   }
+  logLine("Frontend san sang, mo cua so chinh.");
 
   mainWindow = new BrowserWindow({ width: 1280, height: 800 });
   await mainWindow.loadURL(`http://127.0.0.1:${FRONTEND_PORT}`);
@@ -196,12 +226,22 @@ async function boot() {
 app.whenReady().then(boot);
 
 app.on("window-all-closed", () => {
+  logLine("Tat ca cua so da dong, thoat ung dung.");
   app.quit();
 });
 
 app.on("before-quit", () => {
+  logLine("Dang don dep tien trinh sidecar truoc khi thoat.");
   killProcessTree(backendProc);
   killProcessTree(frontendProc);
   killByPort(BACKEND_PORT);
   killByPort(FRONTEND_PORT);
+});
+
+process.on("uncaughtException", (err) => {
+  logLine(`LOI KHONG BAT DUOC: ${err && err.stack ? err.stack : err}`);
+});
+
+process.on("unhandledRejection", (reason) => {
+  logLine(`PROMISE BI TU CHOI KHONG XU LY: ${reason}`);
 });
