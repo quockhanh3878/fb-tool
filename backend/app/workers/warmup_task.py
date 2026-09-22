@@ -8,6 +8,8 @@ tiến trình thay vì đứng im mãi ở ngày 0.
 from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import select
+from fastapi import HTTPException
+from app.services.execution_policy import require_entitlement
 
 from app.database import get_session_factory
 from app.models.base import as_utc
@@ -22,6 +24,7 @@ from app.workers.browser_runtime import (
     _maybe_write_cookies,
     build_runtime_config,
     load_phase1_modules,
+    exclusive_browser,
 )
 from app.workers.celery_app import celery_app, run_async
 
@@ -36,6 +39,7 @@ def needs_step_today(clone: CloneAccount, now: datetime | None = None) -> bool:
     return (now or datetime.now(timezone.utc)) - last >= timedelta(hours=20)
 
 
+@exclusive_browser
 async def browser_executor(clone: CloneAccount, step) -> bool:
     """Thực thi hành vi ủ ấm thật trên Playwright.
 
@@ -49,7 +53,7 @@ async def browser_executor(clone: CloneAccount, step) -> bool:
     try:
         cookies = decrypt_cookies(clone.cookie_data_encrypted)
     except Exception:
-        cookies = None
+        raise BrowserRuntimeUnavailable("cookie_decryption_failed") from None
 
     config = build_runtime_config(clone, [])
     _maybe_write_cookies(config, clone, cookies)
@@ -83,19 +87,28 @@ async def _run_step(clone_id: str) -> dict:
         clone = await db.get(CloneAccount, clone_id)
         if clone is None:
             return {"skipped": "clone_missing"}
+        if not needs_step_today(clone):
+            return {"skipped": "not_due"}
+        try:
+            await require_entitlement(db, clone.user_id)
+        except HTTPException:
+            return {"skipped": "policy_denied"}
+        await db.commit()
 
         notifier = NotificationService()
 
         async def notify(user_id: str, message: str) -> None:
+            from app.services.outbox_service import queue_text
+
             user = await db.get(User, user_id)
             if user and user.telegram_chat_id:
-                await notifier.send_text(user.telegram_chat_id, message)
+                await queue_text(db, user.telegram_chat_id, message)
 
         try:
             load_phase1_modules()
             executor = browser_executor
         except BrowserRuntimeUnavailable:
-            executor = None  # dry-run: vẫn tiến lịch, không mở browser
+            return {"skipped": "browser_unavailable"}
 
         service = WarmupService(db, notifier=notify, executor=executor)
         result = await service.run_daily_step(clone)

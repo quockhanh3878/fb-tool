@@ -107,7 +107,7 @@ class NotificationService:
                 return {"ok": False, "status": response.status_code, "body": response.text}
             return response.json()
         except Exception as exc:  # mạng lỗi không được làm sập worker
-            return {"ok": False, "error": str(exc)}
+            return {"ok": False, "error": "telegram_transport_error"}
         finally:
             if self._client is None:
                 await client.aclose()
@@ -175,11 +175,11 @@ async def build_clone_notifier(db):
     """
     from app.models.user import User
 
-    service = NotificationService()
+    from app.services.outbox_service import queue_text
 
     async def send(user_id: str, message: str) -> None:
         user = await db.get(User, user_id)
         if user and user.telegram_chat_id:
-            await service.send_text(user.telegram_chat_id, message)
+            await queue_text(db, user.telegram_chat_id, message)
 
     return send

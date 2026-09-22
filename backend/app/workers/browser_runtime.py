@@ -6,10 +6,16 @@ Thay vì viết lại Scout/Shooter, worker nạp thẳng các module trong thư
 PostgreSQL vào. Nhờ vậy mọi vá lỗi anti-ban ở Phase 1 tự động có hiệu lực
 cho toàn bộ khách hàng SaaS.
 """
-import json
+import asyncio
 import sys
 from dataclasses import dataclass, field
+from functools import wraps
 from pathlib import Path
+from urllib.parse import parse_qs, urlsplit
+
+from app.config import get_settings
+from app.services.leases import LeaseBusy, resource_lease
+from app.services.url_policy import browser_request_allowed, facebook_url
 
 # commhunter/ nằm cạnh backend/ trong repo; thêm vào sys.path để import phẳng.
 COMMHUNTER_DIR = Path(__file__).resolve().parents[3] / "commhunter"
@@ -19,6 +25,20 @@ if COMMHUNTER_DIR.is_dir() and str(COMMHUNTER_DIR) not in sys.path:
 
 class BrowserRuntimeUnavailable(RuntimeError):
     """Chưa cài Playwright hoặc không tìm thấy package commhunter."""
+
+
+def exclusive_browser(function):
+    @wraps(function)
+    async def guarded(clone, *args, **kwargs):
+        if not get_settings().browser_automation_enabled:
+            raise BrowserRuntimeUnavailable("browser_automation_disabled")
+        try:
+            async with resource_lease(f"clone:{clone.id}"):
+                async with asyncio.timeout(get_settings().browser_operation_timeout_seconds):
+                    return await function(clone, *args, **kwargs)
+        except LeaseBusy:
+            raise BrowserRuntimeUnavailable("clone_busy") from None
+    return guarded
 
 
 class ScoutCheckpoint(RuntimeError):
@@ -56,6 +76,9 @@ class RuntimeBrowser:
     """Đủ để BrowserManager Phase 1 đọc `browser.attach_cdp` toàn cục."""
 
     attach_cdp: str | None = None
+    headless: bool = True
+    channel: str = "chromium"
+    context_initializer: object = None
 
 
 @dataclass
@@ -126,20 +149,32 @@ def build_runtime_config(
     )
 
 
-def write_cookie_file(clone, cookies: list) -> str:
-    """Ghi cookie đã giải mã ra file tạm trong thư mục profile của clone."""
-    profile_dir = Path(clone.browser_profile_path or f"data/browser_profiles/{clone.id}")
-    profile_dir.mkdir(parents=True, exist_ok=True)
-    path = profile_dir / "cookies.json"
-    path.write_text(json.dumps(cookies, ensure_ascii=False), encoding="utf-8")
-    return str(path)
-
-
 def _maybe_write_cookies(config: RuntimeConfig, clone, cookies: list | None) -> None:
-    """Nạp cookie vào profile clone — bỏ qua khi attach CDP: Chrome đó đã có sẵn
-    phiên đăng nhập, và ta không muốn ghi cookie đã giải mã ra đĩa khi không cần."""
-    if cookies and not config.browser.attach_cdp:
-        write_cookie_file(clone, cookies)
+    """Install request policy and supply cookies directly in memory."""
+    async def initialize(context):
+        async def route_request(route):
+            if browser_request_allowed(route.request.url):
+                await route.continue_()
+            else:
+                await route.abort()
+
+        await context.route("**/*", route_request)
+        if hasattr(context, "route_web_socket"):
+            async def deny_socket(socket):
+                await socket.close()
+
+            await context.route_web_socket("**/*", deny_socket)
+        if cookies and not config.browser.attach_cdp:
+            if not isinstance(cookies, list) or any(
+                not isinstance(cookie, dict) or not (
+                    str(cookie.get("domain", "")).lstrip(".") == "facebook.com"
+                    or str(cookie.get("domain", "")).lstrip(".").endswith(".facebook.com")
+                ) for cookie in cookies
+            ):
+                raise ValueError("Only Facebook cookies are accepted")
+            await context.add_cookies(cookies)
+
+    config.browser.context_initializer = initialize
 
 
 def load_phase1_modules():
@@ -160,8 +195,10 @@ def load_phase1_modules():
     return BrowserManager, ScoutWorker, ShooterWorker
 
 
+@exclusive_browser
 async def scan_group_raw(clone, group, cookies: list | None = None) -> list[dict]:
     """Quét 1 group, trả về danh sách bài thô để API xử lý pipeline."""
+    facebook_url(group.group_url, group=True)
     BrowserManager, ScoutWorker, _ = load_phase1_modules()
     config = build_runtime_config(clone, [group])
     _maybe_write_cookies(config, clone, cookies)
@@ -188,6 +225,7 @@ async def scan_group_raw(clone, group, cookies: list | None = None) -> list[dict
         await manager.close_all()
 
 
+@exclusive_browser
 async def scrape_joined_groups_raw(clone, cookies: list | None = None) -> list[dict]:
     """Lấy danh sách nhóm mà tài khoản Scout của clone đã tham gia (chỉ đọc).
 
@@ -205,8 +243,32 @@ async def scrape_joined_groups_raw(clone, cookies: list | None = None) -> list[d
         await manager.close_all()
 
 
+@exclusive_browser
+async def scrape_post_comments_raw(
+    clone, post_url: str, cookies: list | None = None, limit: int = 100
+) -> list[dict]:
+    """Đọc comment đã render trên permalink; không click/ghi lên Facebook."""
+    post_url = facebook_url(post_url)
+    BrowserManager, ScoutWorker, _ = load_phase1_modules()
+    config = build_runtime_config(clone, [])
+    _maybe_write_cookies(config, clone, cookies)
+    manager = BrowserManager(config)
+    scout = ScoutWorker(manager, config)
+    try:
+        return await scout.scan_post_comments(post_url, limit=limit)
+    except Exception as exc:
+        wrapped = wrap_scout_error(exc)
+        if wrapped is not exc:
+            raise wrapped from exc
+        raise
+    finally:
+        await manager.close_all()
+
+
+@exclusive_browser
 async def post_comment_real(clone, post_url: str, comment_text: str, cookies: list | None = None):
-    """Đăng 1 comment bằng ShooterWorker Phase 1. Trả về CommentStatus (chuỗi)."""
+    """Đăng comment và trả status cùng locator nếu Facebook hiển thị được link."""
+    post_url = facebook_url(post_url)
     BrowserManager, _, ShooterWorker = load_phase1_modules()
     config = build_runtime_config(clone, [])
     _maybe_write_cookies(config, clone, cookies)
@@ -217,19 +279,31 @@ async def post_comment_real(clone, post_url: str, comment_text: str, cookies: li
         status = await shooter.post_comment(
             post_url=post_url, comment_text=comment_text, dedup_store=None
         )
-        return getattr(status, "value", str(status))
+        comment_url = getattr(shooter, "last_comment_url", "") or ""
+        comment_id = parse_qs(urlsplit(comment_url).query).get("comment_id", [""])[0]
+        return {
+            "status": getattr(status, "value", str(status)),
+            "comment_url": comment_url,
+            "fb_comment_id": comment_id,
+        }
     finally:
         await manager.close_all()
 
 
+@exclusive_browser
 async def publish_post_real(
-    clone, group_url: str, content: str, cookies: list | None = None
+    clone,
+    group_url: str,
+    content: str,
+    cookies: list | None = None,
+    media_paths: list[str] | None = None,
 ) -> dict:
     """Đăng 1 bài viết vào group bằng ShooterWorker Phase 1.
 
     Trả về dict {status, post_url, error} — status là chuỗi PublishStatus
     ('published' | 'published_no_url' | 'failed'). KHÔNG bao giờ bịa link.
     """
+    group_url = facebook_url(group_url, group=True)
     BrowserManager, _, ShooterWorker = load_phase1_modules()
     config = build_runtime_config(clone, [])
     _maybe_write_cookies(config, clone, cookies)
@@ -237,7 +311,9 @@ async def publish_post_real(
     manager = BrowserManager(config)
     shooter = ShooterWorker(manager, config)
     try:
-        result = await shooter.publish_post(group_url=group_url, content=content)
+        result = await shooter.publish_post(
+            group_url=group_url, content=content, media_paths=media_paths
+        )
         return {
             "status": getattr(result.status, "value", str(result.status)),
             "post_url": result.post_url,
@@ -247,6 +323,7 @@ async def publish_post_real(
         await manager.close_all()
 
 
+@exclusive_browser
 async def preflight_check_real(clone, cookies: list | None = None) -> dict:
     """Kiểm tra sức khoẻ nick + phiên đăng nhập TRƯỚC một lượt quét/đăng (Track D).
 
@@ -265,6 +342,10 @@ async def preflight_check_real(clone, cookies: list | None = None) -> dict:
 
     manager = BrowserManager(config)
     try:
+        account = config.accounts["scout"]
+        await manager.create_stealth_context(
+            profile_dir=account.profile_dir, proxy=account.proxy, cdp_endpoint=account.cdp_endpoint,
+        )
         reason = await manager.probe_session_reason(profile_dir)
     except Exception as exc:  # noqa: BLE001 - preflight không được giết caller
         reason = "error"
@@ -275,6 +356,7 @@ async def preflight_check_real(clone, cookies: list | None = None) -> dict:
     return {"ok": reason == "ok", "reason": reason}
 
 
+@exclusive_browser
 async def delete_own_post_real(
     clone, post_url: str, cookies: list | None = None
 ) -> bool:
@@ -284,6 +366,7 @@ async def delete_own_post_real(
     thấy bài đã biến mất; False nếu không khớp menu / không xác nhận được.
     KHÔNG thử mù, fail an toàn.
     """
+    post_url = facebook_url(post_url)
     BrowserManager, _, ShooterWorker = load_phase1_modules()
     config = build_runtime_config(clone, [])
     _maybe_write_cookies(config, clone, cookies)

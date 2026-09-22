@@ -15,14 +15,15 @@ from typing import Awaitable, Callable
 
 logger = logging.getLogger("commhunter.job_queue")
 
-Job = Callable[[], Awaitable[None]]
+Job = Callable[[], Awaitable[object]]
 
 
 class SerialJobQueue:
     """Hàng đợi asyncio tuần tự — 1 job chạy xong mới tới job kế tiếp."""
 
-    def __init__(self) -> None:
-        self._queue: asyncio.Queue[Job] = asyncio.Queue()
+    def __init__(self, maxsize: int = 128) -> None:
+        self._queue: asyncio.Queue[tuple[str, Job]] = asyncio.Queue(maxsize=maxsize)
+        self._pending: set[str] = set()
         self._worker_task: asyncio.Task | None = None
 
     def start(self) -> None:
@@ -37,20 +38,33 @@ class SerialJobQueue:
             except asyncio.CancelledError:
                 pass
             self._worker_task = None
+        while not self._queue.empty():
+            self._queue.get_nowait()
+            self._queue.task_done()
+        self._pending.clear()
 
-    async def enqueue(self, job: Job) -> None:
-        await self._queue.put(job)
+    async def enqueue(self, job: Job, *, key: str | None = None) -> bool:
+        identity = key or str(id(job))
+        if identity in self._pending:
+            return False
+        try:
+            self._queue.put_nowait((identity, job))
+        except asyncio.QueueFull:
+            return False
+        self._pending.add(identity)
+        return True
 
     async def _run(self) -> None:
         while True:
-            job = await self._queue.get()
+            identity, job = await self._queue.get()
             try:
                 await job()
             except Exception:
                 # Lỗi 1 job không được giết cả hàng đợi — job hỏng vốn sẽ
                 # được lịch (scheduler.py) gọi lại ở chu kỳ kế tiếp.
-                logger.exception("SerialJobQueue: job loi")
+                logger.warning("SerialJobQueue: job failed; durable state requires review")
             finally:
+                self._pending.discard(identity)
                 self._queue.task_done()
 
 

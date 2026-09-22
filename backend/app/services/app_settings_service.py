@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
 from app.models.app_setting import AppSetting
+from app.services.crypto import _fernet
 
 OPENAI_API_KEY = "openai_api_key"
 TELEGRAM_BOT_TOKEN = "telegram_bot_token"
@@ -23,27 +24,36 @@ EDITABLE_KEYS = (OPENAI_API_KEY, TELEGRAM_BOT_TOKEN)
 
 
 async def get_value(db: AsyncSession, key: str) -> str:
+    if key == COOKIE_ENCRYPTION_KEY:
+        return get_settings().cookie_encryption_key
     row = await db.get(AppSetting, key)
-    return row.value if row else ""
+    if row is None or not row.value:
+        return ""
+    if not row.value.startswith("fernet:v1:"):
+        raise ValueError("Legacy desktop credentials require startup migration")
+    return _fernet().decrypt(row.value.removeprefix("fernet:v1:").encode()).decode()
 
 
 async def set_value(db: AsyncSession, key: str, value: str) -> None:
+    if key not in EDITABLE_KEYS:
+        raise ValueError("This credential must be provisioned outside the database")
+    encrypted = "fernet:v1:" + _fernet().encrypt(value.encode()).decode() if value else ""
     row = await db.get(AppSetting, key)
     if row is None:
-        db.add(AppSetting(key=key, value=value))
+        db.add(AppSetting(key=key, value=encrypted))
     else:
-        row.value = value
+        row.value = encrypted
 
 
 async def ensure_cookie_key(db: AsyncSession) -> str:
-    """Sinh 1 lần + lưu bền khoá Fernet cho desktop — khác RAM tạm của SaaS dev.
-    Không sinh lại nếu đã có, nếu không cookie cũ đã mã hoá sẽ không giải được."""
-    existing = await get_value(db, COOKIE_ENCRYPTION_KEY)
-    if existing:
-        return existing
-    key = Fernet.generate_key().decode()
-    await set_value(db, COOKIE_ENCRYPTION_KEY, key)
-    await db.commit()
+    """Use the externally provisioned key without persisting it in the DB."""
+    key = get_settings().cookie_encryption_key
+    Fernet(key.encode())
+    legacy = await db.get(AppSetting, COOKIE_ENCRYPTION_KEY)
+    if legacy is not None:
+        if legacy.value != key:
+            raise ValueError("Migrate the legacy desktop key before changing COOKIE_ENCRYPTION_KEY")
+        await db.delete(legacy)
     return key
 
 
@@ -53,6 +63,12 @@ async def apply_to_runtime_settings(db: AsyncSession) -> None:
     chạy (đặc biệt trước lần gọi services/crypto.py đầu tiên)."""
     settings = get_settings()
     settings.cookie_encryption_key = await ensure_cookie_key(db)
+
+    for key in EDITABLE_KEYS:
+        row = await db.get(AppSetting, key)
+        if row is not None and row.value and not row.value.startswith("fernet:v1:"):
+            await set_value(db, key, row.value)
+    await db.commit()
 
     openai_key = await get_value(db, OPENAI_API_KEY)
     if openai_key:

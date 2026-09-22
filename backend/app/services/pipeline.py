@@ -10,10 +10,12 @@ Hàm ở đây nhận sẵn session DB nên dùng được cả từ router (tha
 người dùng) lẫn từ Celery worker (chạy nền).
 """
 import hashlib
+import math
 from datetime import datetime, timezone
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from fastapi import HTTPException
 
 from app.models.base import utcnow
 from app.models.campaign import Campaign, CampaignGroup, CommentScript
@@ -21,6 +23,8 @@ from app.models.enums import CampaignMode, CommentStatus, PostStatus, ScriptType
 from app.models.post import CommentAction, DiscoveredPost
 from app.models.user import User
 from app.services.ai_service import AIService, keyword_match
+from app.services.execution_policy import check_comment_capacity, lock_user, require_comment_policy, require_entitlement
+from app.services.url_policy import facebook_url
 from app.services.script_engine import (
     ScriptError,
     render_unique,
@@ -46,6 +50,7 @@ async def ingest_raw_posts(
     """
     from app.services.facebook_utils import extract_post_id
 
+    await lock_user(db, campaign.user_id)
     fresh: list[DiscoveredPost] = []
     for raw in raw_posts:
         text = (raw.get("text") or "").strip()
@@ -68,7 +73,7 @@ async def ingest_raw_posts(
             campaign_group_id=group.id,
             content_hash=content_hash,
             post_id_fb=extract_post_id(raw.get("url") or ""),
-            post_url=raw.get("url") or "",
+            post_url=facebook_url(raw.get("url") or ""),
             author_name=author,
             content_text=text,
             existing_comment_count=int(raw.get("commentCount") or 0),
@@ -104,10 +109,13 @@ async def evaluate_post(
         score = float(result.get("relevance_score", 0) or 0)
     except (TypeError, ValueError):
         score = 0.0
+    if not math.isfinite(score) or not 0 <= score <= 1:
+        score = 0.0
 
     post.ai_relevance_score = score
     post.ai_reason = str(result.get("reason", ""))
-    post.ai_extracted = result.get("extracted") or {}
+    extracted = result.get("extracted") or {}
+    post.ai_extracted = extracted if isinstance(extracted, dict) else {}
 
     if score < float(campaign.min_relevance_score or 0.7):
         post.status = PostStatus.SKIPPED.value
@@ -189,13 +197,7 @@ async def pick_script(db: AsyncSession, campaign_id: str) -> CommentScript | Non
     if script is not None:
         return script
 
-    # Không còn kịch bản nào đang bật: rơi về mặc định để chiến dịch vẫn chạy.
-    fallback = await db.execute(
-        select(CommentScript)
-        .where(CommentScript.campaign_id == campaign_id)
-        .order_by(CommentScript.is_default.desc(), CommentScript.created_at.asc())
-    )
-    return fallback.scalars().first()
+    return None
 
 
 def mark_script_used(script: CommentScript | None) -> None:
@@ -231,6 +233,10 @@ async def build_comment(
     if not getattr(campaign, "ai_comments_enabled", False):
         return "", script
 
+    subscription = await require_entitlement(db, campaign.user_id, campaign)
+    if not subscription.ai_comments_enabled:
+        raise HTTPException(status_code=403, detail="Gói cước không có AI comment")
+
     text = await ai.generate_comment(post.content_text, campaign, post.ai_extracted or {})
     if not text:
         return "", script
@@ -251,8 +257,22 @@ async def queue_comment(
     script: CommentScript | None = None,
     clone_id: str | None = None,
     scheduled_at: datetime | None = None,
+    idempotency_key: str | None = None,
 ) -> CommentAction:
     """Đưa 1 lượt comment vào hàng đợi (status=queued)."""
+    await lock_user(db, campaign.user_id)
+    key = idempotency_key or post.id
+    duplicate = CommentAction.idempotency_key == key
+    if key == post.id:
+        duplicate = or_(duplicate, (CommentAction.idempotency_key.is_(None)) & (CommentAction.discovered_post_id == post.id))
+    existing = await db.scalar(select(CommentAction).where(duplicate).order_by(CommentAction.created_at).limit(1))
+    if existing is not None:
+        if existing.discovered_post_id != post.id:
+            raise HTTPException(status_code=409, detail="Idempotency key conflict")
+        return existing
+    subscription = await require_comment_policy(db, campaign, post, clone_id, allow_completed=key.startswith("bump:"))
+    await check_comment_capacity(db, campaign, subscription)
+    facebook_url(post.post_url)
     action = CommentAction(
         discovered_post_id=post.id,
         clone_account_id=clone_id,
@@ -260,6 +280,7 @@ async def queue_comment(
         comment_content=comment_text,
         status=CommentStatus.QUEUED.value,
         scheduled_at=scheduled_at or utcnow(),
+        idempotency_key=key,
     )
     db.add(action)
     await db.flush()
@@ -276,6 +297,7 @@ async def process_campaign_posts(
 ) -> dict:
     """Chạy hết pipeline cho danh sách bài mới. Trả về thống kê tóm tắt."""
     stats = {"evaluated": 0, "matched": 0, "notified": 0, "queued": 0, "skipped": 0}
+    await require_entitlement(db, campaign.user_id, campaign)
     quota = int(campaign.max_comments_per_day or 20)
     used = await count_today_actions(db, campaign.id)
 
@@ -289,13 +311,11 @@ async def process_campaign_posts(
         stats["matched"] += 1
 
         if campaign.mode == CampaignMode.SEMI_AUTO.value:
-            post.status = PostStatus.NOTIFIED.value
-            post.notified_at = utcnow()
-            stats["notified"] += 1
             if notifier is not None and user is not None and user.telegram_chat_id:
-                await notifier.send_post_notification(
-                    user.telegram_chat_id, post, campaign.name
-                )
+                from app.services.outbox_service import queue_post_notification
+
+                await queue_post_notification(db, user.telegram_chat_id, post, campaign.name)
+                post.status = PostStatus.NOTIFICATION_PENDING.value
             continue
 
         # full_auto

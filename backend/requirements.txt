@@ -30,4 +30,5 @@ httpx==0.28.1
 # --- Browser automation (dung chung code Phase 1) ---
 playwright==1.62.0
 playwright-stealth==2.0.3
+loguru>=0.7,<1
 openai==3.8.0

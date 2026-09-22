@@ -29,8 +29,7 @@ HTTP_CONFLICT = 409  # bot đang gắn webhook -> getUpdates bị từ chối
 async def poll_once(offset: int, notifier: NotificationService) -> tuple[int, bool]:
     """Một vòng getUpdates. Trả (offset kế tiếp, vòng này có gọi Telegram OK không).
 
-    Offset nhích qua update TRƯỚC khi xử lý: một update làm handler lỗi chỉ bị
-    ghi log một lần, không bị Telegram gửi lại mãi mãi.
+    Chỉ xác nhận offset sau khi transaction xử lý đã thành công.
     """
     result = await notifier.get_updates(offset, timeout=LONG_POLL_TIMEOUT_SEC)
     if not result or result.get("ok") is not True:
@@ -45,12 +44,13 @@ async def poll_once(offset: int, notifier: NotificationService) -> tuple[int, bo
 
     for update in result.get("result") or []:
         update_id = int(update.get("update_id", offset - 1))
-        offset = max(offset, update_id + 1)
         try:
             async with get_session_factory()() as db:
                 await handle_update(db, update, notifier)
+            offset = max(offset, update_id + 1)
         except Exception:
-            logger.exception("Telegram poller: xu ly update %s loi", update_id)
+            logger.warning("Telegram update processing failed; retry pending")
+            return offset, False
     return offset, True
 
 

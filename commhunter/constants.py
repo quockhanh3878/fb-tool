@@ -467,3 +467,58 @@ EXTRACT_LATEST_POST_JS = r"""([textFragment]) => {
     }
     return '';
 }"""
+
+# JS bóc comment đã render trên trang permalink. Chỉ nhận comment có link chứa
+# ``comment_id``; nếu Facebook đổi DOM và không tìm được tín hiệu này thì trả
+# mảng rỗng, không tự đoán tác giả/nội dung để tránh tạo lead giả.
+EXTRACT_COMMENTS_JS = r"""([postUrl, limit]) => {
+    const clean = (s) => (s || '').replace(/\s+/g, ' ').trim();
+    const ignored = new Set([
+        'Thích', 'Bày tỏ cảm xúc', 'Trả lời', 'Chia sẻ', 'Like', 'Reply', 'Share',
+        'Viết bình luận...', 'Write a comment...'
+    ]);
+    const result = [];
+    const seen = new Set();
+    const links = [...document.querySelectorAll('a[href*="comment_id="]')];
+    for (const link of links) {
+        if (result.length >= limit) break;
+        const href = link.href || link.getAttribute('href') || '';
+        let parsed;
+        try { parsed = new URL(href, location.origin); } catch (e) { continue; }
+        const commentId = parsed.searchParams.get('comment_id') || '';
+        if (!commentId || seen.has(commentId)) continue;
+        let box = link;
+        let text = '';
+        let author = '';
+        let authorId = '';
+        let commentedAt = '';
+        for (let depth = 0; depth < 10 && box; depth += 1, box = box.parentElement) {
+            const candidates = [...box.querySelectorAll('[dir="auto"]')]
+                .filter((node) => !node.closest('a[href*="/user/"], a[href*="profile.php"]'))
+                .map((node) => clean(node.textContent))
+                .filter((value) => value.length >= 2 && value.length <= 10000 && !ignored.has(value))
+                .filter((value) => !/^\d+\s*(gi[oờ]|ph[uú]t|ng[aà]y|h|m|d|w)$/i.test(value));
+            if (candidates.length) text = candidates.sort((a, b) => a.length - b.length)[0];
+            const authorLink = [...box.querySelectorAll('a[href*="/user/"], a[href*="profile.php"]')]
+                .find((a) => clean(a.textContent).length > 1);
+            if (authorLink) {
+                author = clean(authorLink.textContent);
+                const authorHref = authorLink.getAttribute('href') || '';
+                const idMatch = authorHref.match(/[?&]id=(\d+)/) || authorHref.match(/\/user\/(\d+)/);
+                authorId = idMatch ? idMatch[1] : '';
+            }
+            const time = box.querySelector('time[datetime], abbr[title]');
+            if (time) commentedAt = time.getAttribute('datetime') || time.getAttribute('title') || '';
+            if (text && author) break;
+        }
+        // Không nhận timestamp/tên rời rạc khi DOM chưa expose author.
+        if (!text || (!author && text.length < 8)) continue;
+        seen.add(commentId);
+        result.push({
+            id: commentId, text, author, authorId, url: postUrl || '',
+            commentUrl: (postUrl || '').split('#')[0].split('?')[0] + '?comment_id=' + encodeURIComponent(commentId),
+            commentedAt,
+        });
+    }
+    return result;
+}"""

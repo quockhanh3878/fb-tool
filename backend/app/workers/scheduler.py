@@ -29,7 +29,8 @@ async def _dispatch_scout() -> None:
     pairs = await _due_groups()
     for campaign_id, group_id in pairs:
         await job_queue.enqueue(
-            lambda c=campaign_id, g=group_id: _scan_one(c, g)
+            lambda campaign=campaign_id, group=group_id: _scan_one(campaign, group),
+            key=f"scout:{campaign_id}:{group_id}",
         )
 
 
@@ -38,7 +39,7 @@ async def _dispatch_shooter() -> None:
 
     action_ids = await _due_actions()
     for action_id in action_ids:
-        await job_queue.enqueue(lambda a=action_id: _execute(a))
+        await job_queue.enqueue(lambda action=action_id: _execute(action), key=f"comment:{action_id}")
     await _wake_quota_exhausted()
 
 
@@ -47,7 +48,7 @@ async def _dispatch_bump() -> None:
 
     bump_ids = await _due_bumps()
     for bump_id in bump_ids:
-        await job_queue.enqueue(lambda b=bump_id: _bump_one(b))
+        await job_queue.enqueue(lambda bump=bump_id: _bump_one(bump), key=f"bump:{bump_id}")
 
 
 async def _dispatch_warmup() -> None:
@@ -55,19 +56,19 @@ async def _dispatch_warmup() -> None:
 
     clone_ids = await _clones_needing_warmup()
     for clone_id in clone_ids:
-        await job_queue.enqueue(lambda c=clone_id: _run_step(c))
+        await job_queue.enqueue(lambda clone=clone_id: _run_step(clone), key=f"warmup:{clone_id}")
 
 
 async def _dispatch_health_check() -> None:
     from app.workers.health_check_task import _check_all
 
-    await job_queue.enqueue(_check_all)
+    await job_queue.enqueue(_check_all, key="health-check")
 
 
 async def _dispatch_wake_cooldowns() -> None:
     from app.workers.health_check_task import _wake
 
-    await job_queue.enqueue(_wake)
+    await job_queue.enqueue(_wake, key="wake-cooldowns")
 
 
 async def _dispatch_publisher() -> None:
@@ -75,7 +76,14 @@ async def _dispatch_publisher() -> None:
 
     pub_ids = await _due_publishes()
     for pub_id in pub_ids:
-        await job_queue.enqueue(lambda p=pub_id: _execute_one(p))
+        await job_queue.enqueue(lambda publish=pub_id: _execute_one(publish), key=f"publish:{pub_id}")
+
+
+async def _dispatch_maintenance() -> None:
+    from app.workers.maintenance_task import recover_stale_jobs, deliver_notifications
+
+    await recover_stale_jobs()
+    await deliver_notifications()
 
 
 def start_scheduler() -> None:
@@ -97,6 +105,7 @@ def start_scheduler() -> None:
         _dispatch_publisher, "interval", seconds=60, id="publisher-process-queue"
     )
     scheduler.start()
+    scheduler.add_job(_dispatch_maintenance, "interval", seconds=30, id="durable-maintenance", max_instances=1)
     logger.info("Scheduler desktop da khoi dong: 7 job dang ky")
 
 

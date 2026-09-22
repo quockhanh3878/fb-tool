@@ -200,7 +200,7 @@ async def upload_cookie(
     db: AsyncSession = Depends(get_db),
 ):
     """Nhận file cookie JSON hoặc Netscape, validate rồi lưu ở dạng mã hoá."""
-    raw = await file.read()
+    raw = await file.read(MAX_COOKIE_BYTES + 1)
     if len(raw) > MAX_COOKIE_BYTES:
         raise HTTPException(status_code=413, detail="File cookie lớn bất thường (>2MB)")
 
@@ -215,6 +215,9 @@ async def upload_cookie(
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
     clone.cookie_data_encrypted = encrypt_cookies(cookies)
+    summary = summarize_cookies(cookies)
+    if summary.get("fb_user_id"):
+        clone.fb_user_id = summary["fb_user_id"]
     manager = AccountManager(db, notifier=await _notifier(db))
 
     # Cookie hợp lệ = clone sẵn sàng bước vào chu kỳ ủ ấm.
@@ -226,7 +229,6 @@ async def upload_cookie(
     await db.commit()
     await db.refresh(clone)
 
-    summary = summarize_cookies(cookies)
     return CookieUploadOut(**summary, status=clone.status)
 
 

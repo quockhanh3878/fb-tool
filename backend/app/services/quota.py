@@ -82,6 +82,9 @@ def _limit(subscription: Subscription | None, spec: PlanSpec, field: str) -> int
 
 
 async def ensure_can_add_group(db: AsyncSession, user: User, adding: int = 1) -> None:
+    from app.services.execution_policy import lock_user
+
+    await lock_user(db, user.id)
     subscription = await require_active_subscription(db, user)
     spec = get_plan(subscription.plan)
     limit = _limit(subscription, spec, "max_groups")
@@ -98,6 +101,9 @@ async def remaining_group_slots(db: AsyncSession, user: User) -> int:
 
     Ném SubscriptionInactive nếu gói hết hạn — luồng gọi phải bắt.
     """
+    from app.services.execution_policy import lock_user
+
+    await lock_user(db, user.id)
     subscription = await require_active_subscription(db, user)
     spec = get_plan(subscription.plan)
     limit = _limit(subscription, spec, "max_groups")
@@ -106,6 +112,9 @@ async def remaining_group_slots(db: AsyncSession, user: User) -> int:
 
 
 async def ensure_can_add_clone(db: AsyncSession, user: User, adding: int = 1) -> None:
+    from app.services.execution_policy import lock_user
+
+    await lock_user(db, user.id)
     subscription = await require_active_subscription(db, user)
     spec = get_plan(subscription.plan)
     limit = _limit(subscription, spec, "max_clones")

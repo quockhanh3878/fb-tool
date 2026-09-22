@@ -99,6 +99,7 @@ async def notify_mentions(
     campaign_name: str,
     mentions: list[Mention],
     notifier: NotificationService | None = None,
+    db=None,
 ) -> bool:
     """Bắn Telegram tóm tắt các lượt nhắc mới cho chủ chiến dịch.
 
@@ -109,6 +110,11 @@ async def notify_mentions(
     """
     if not mentions or user is None or not user.telegram_chat_id:
         return False
+    if db is not None:
+        from app.services.outbox_service import queue_text
+
+        await queue_text(db, user.telegram_chat_id, mention_summary(campaign_name, mentions))
+        return True
     notifier = notifier or NotificationService()
     await notifier.send_text(
         user.telegram_chat_id, mention_summary(campaign_name, mentions)

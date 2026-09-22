@@ -14,6 +14,7 @@ headless + gọi mã trực tiếp. Vì thế mặc định `headless=False`.
 """
 import asyncio
 import random
+import sys
 from pathlib import Path
 from typing import Optional
 
@@ -152,6 +153,7 @@ class BrowserManager:
             getattr(browser_cfg, "headless", BROWSER_HEADLESS_DEFAULT)
         )
         self.default_cdp = getattr(browser_cfg, "attach_cdp", None)
+        self.context_initializer = getattr(browser_cfg, "context_initializer", None)
 
     async def _get_playwright(self):
         """Lazy-init Playwright instance."""
@@ -179,6 +181,8 @@ class BrowserManager:
         # KHÔNG áp stealth: đây là Chrome thật của người dùng, vá thêm chỉ làm
         # nó trông lạ hơn. Dùng nguyên trạng.
         self._contexts[key] = {"context": context, "attached": True, "browser": browser}
+        if self.context_initializer is not None:
+            await self.context_initializer(context)
         logger.info(
             f"Đã attach — {len(context.pages)} tab đang mở. "
             "Sẽ KHÔNG đóng browser này khi dọn dẹp."
@@ -194,7 +198,9 @@ class BrowserManager:
         user_agent: Optional[str],
     ):
         p = await self._get_playwright()
-        Path(profile_dir).mkdir(parents=True, exist_ok=True)
+        Path(profile_dir).mkdir(parents=True, exist_ok=True, mode=0o700)
+        if sys.platform != "win32":
+            Path(profile_dir).chmod(0o700)
 
         fp = load_or_create_fingerprint(profile_dir)
         ua = user_agent or fp.get("user_agent") or random.choice(USER_AGENTS_POOL)
@@ -202,7 +208,7 @@ class BrowserManager:
 
         proxy_config = {"server": proxy} if proxy else None
         if proxy:
-            logger.info(f"Sử dụng proxy: {proxy}")
+            logger.info("Sử dụng proxy đã cấu hình")
 
         launch_kwargs = dict(
             user_data_dir=profile_dir,
@@ -214,6 +220,7 @@ class BrowserManager:
             locale=fp.get("locale", LOCALE),
             timezone_id=fp.get("timezone", TIMEZONE),
             proxy=proxy_config,
+            service_workers="block" if self.context_initializer is not None else "allow",
         )
 
         # channel="chrome" cần Google Chrome đã cài. Nếu máy không có → rơi về
@@ -232,6 +239,10 @@ class BrowserManager:
                 channel=BROWSER_CHANNEL_FALLBACK, **launch_kwargs
             )
             active_channel = BROWSER_CHANNEL_FALLBACK
+
+        self._contexts[profile_dir] = {"context": context, "attached": False}
+        if self.context_initializer is not None:
+            await self.context_initializer(context)
 
         # 1) playwright-stealth ở cấp CONTEXT (phủ mọi page hiện tại + tương lai),
         #    đã nhồi sẵn UA / platform / WebGL vendor+renderer của vân tay nick này.

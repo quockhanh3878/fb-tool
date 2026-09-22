@@ -8,6 +8,9 @@ khoá cục bộ TRƯỚC khi gọi AI để không đốt token vào rác.
 import asyncio
 import json
 import unicodedata
+from datetime import datetime, timezone
+
+from pydantic import BaseModel, Field, ValidationError
 
 RETRY_COUNT = 3
 RETRY_DELAY_SEC = 2
@@ -15,6 +18,19 @@ FILTER_TEMPERATURE = 0.3
 COMMENT_TEMPERATURE = 0.8
 FILTER_MAX_TOKENS = 500
 COMMENT_MAX_TOKENS = 300
+
+
+class ExtractedFields(BaseModel):
+    genre: str = Field(default="", max_length=500)
+    budget: str = Field(default="", max_length=500)
+    deadline: str = Field(default="", max_length=500)
+    details: str = Field(default="", max_length=1000)
+
+
+class Evaluation(BaseModel):
+    relevance_score: float = Field(ge=0, le=1, allow_inf_nan=False)
+    reason: str = Field(default="", max_length=500)
+    extracted: ExtractedFields = Field(default_factory=ExtractedFields)
 
 
 def normalize_vi(text: str) -> str:
@@ -55,7 +71,7 @@ class AIService:
         if self._client is None:
             import openai
 
-            self._client = openai.OpenAI(api_key=self.api_key)
+            self._client = openai.OpenAI(api_key=self.api_key, timeout=30.0, max_retries=0)
         return self._client
 
     async def _call(
@@ -65,10 +81,19 @@ class AIService:
         temperature: float,
         max_tokens: int,
         json_mode: bool = False,
+        user_id: str = "",
     ):
         """Gọi OpenAI với retry. Hết retry: JSON trả điểm 0, text trả rỗng."""
         for attempt in range(1, RETRY_COUNT + 1):
             try:
+                from app.config import get_settings
+                from app.dependencies import enforce_rate_limit
+
+                budget = get_settings().ai_calls_per_user_per_day
+                if not user_id or budget == 0:
+                    return {"relevance_score": 0.0, "reason": "ai_budget_unavailable", "extracted": {}} if json_mode else ""
+                day = datetime.now(timezone.utc).date().isoformat()
+                await enforce_rate_limit(f"ai:{user_id}:{day}", budget, 86400)
                 kwargs = {
                     "model": self.model,
                     "messages": [
@@ -101,7 +126,7 @@ class AIService:
                     if json_mode:
                         return {
                             "relevance_score": 0.0,
-                            "reason": f"AI API error: {exc}",
+                            "reason": "AI upstream unavailable",
                             "extracted": {},
                         }
                     # Trả rỗng để orchestrator bỏ qua bài, KHÔNG bịa comment.
@@ -121,7 +146,7 @@ class AIService:
         if not self.enabled:
             # Không có key AI: dựa hoàn toàn vào từ khoá, cho điểm vừa đủ ngưỡng.
             return {
-                "relevance_score": max(0.7, float(campaign.min_relevance_score or 0.7)),
+                "relevance_score": max(0.7, float(campaign.min_relevance_score or 0.7)) if any(campaign.whitelist_keywords or []) else 0.0,
                 "reason": "keyword_only (chưa cấu hình OpenAI API key)",
                 "extracted": {},
             }
@@ -139,12 +164,12 @@ class AIService:
             FILTER_TEMPERATURE,
             FILTER_MAX_TOKENS,
             json_mode=True,
+            user_id=getattr(campaign, "user_id", ""),
         )
-        return result if isinstance(result, dict) else {
-            "relevance_score": 0.0,
-            "reason": "AI trả về dữ liệu không hợp lệ",
-            "extracted": {},
-        }
+        try:
+            return Evaluation.model_validate(result).model_dump()
+        except ValidationError:
+            return {"relevance_score": 0.0, "reason": "AI trả về dữ liệu không hợp lệ", "extracted": {}}
 
     async def generate_comment(self, content: str, campaign, extracted: dict | None = None) -> str:
         """Sinh comment ứng tuyển bám thông tin dịch vụ của chiến dịch."""
@@ -174,5 +199,6 @@ class AIService:
             COMMENT_TEMPERATURE,
             COMMENT_MAX_TOKENS,
             json_mode=False,
+            user_id=getattr(campaign, "user_id", ""),
         )
         return (result or "").strip().strip('"') if isinstance(result, str) else ""

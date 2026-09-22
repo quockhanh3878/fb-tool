@@ -6,6 +6,8 @@ toàn bộ nick đang active của một khách — còn đăng nhập + không 
 đồng bộ state machine qua `preflight_service.run_preflight`.
 """
 from sqlalchemy import select
+from fastapi import HTTPException
+from app.services.execution_policy import require_entitlement
 
 from app.database import get_session_factory
 from app.models.clone_account import CloneAccount
@@ -19,6 +21,11 @@ async def _preflight_one(clone_id: str) -> dict:
         clone = await db.get(CloneAccount, clone_id)
         if clone is None:
             return {"skipped": "clone_not_found"}
+        try:
+            await require_entitlement(db, clone.user_id)
+        except HTTPException:
+            return {"skipped": "policy_denied"}
+        await db.commit()
         result = await run_preflight(db, clone)
         await db.commit()
         return {"clone_id": clone_id, "status": clone.status, **result}

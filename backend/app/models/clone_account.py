@@ -28,6 +28,10 @@ class CloneAccount(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     daily_post_limit: Mapped[int] = mapped_column(Integer, default=5)
     daily_counter_date: Mapped[str] = mapped_column(String(10), default="")
     last_activity_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # ID Facebook công khai của chính nick (rút từ cookie c_user lúc nạp —
+    # xem facebook_utils.summarize_cookies). Dùng để loại trừ chính mình khi
+    # săn lead qua comment, không phải secret nên không cần mã hoá.
+    fb_user_id: Mapped[str] = mapped_column(String(32), default="")
 
     # ── Phase 3: vòng đời & anti-ban ────────────────────────────────────
     warmup_day: Mapped[int] = mapped_column(Integer, default=0)

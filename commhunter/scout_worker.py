@@ -39,6 +39,7 @@ from loguru import logger
 
 from browser_manager import BrowserManager
 from constants import (
+    EXTRACT_COMMENTS_JS,
     EXTRACT_GROUPS_JS,
     EXTRACT_POST_JS,
     FEED_SELECTOR,
@@ -249,6 +250,29 @@ class ScoutWorker:
             raise
         except Exception as e:
             logger.error(f"Lỗi lấy danh sách nhóm đã tham gia: {e}")
+            return []
+
+    async def scan_post_comments(self, post_url: str, limit: int = 100) -> list[dict]:
+        """Đọc comment đã render trên permalink bài viết, chỉ đọc và fail-safe."""
+        page = await self._get_page()
+        if not post_url or limit < 1:
+            return []
+        try:
+            await page.goto(post_url, wait_until="domcontentloaded")
+            await page.wait_for_timeout(
+                random.randint(PAGE_LOAD_WAIT_MIN_MS, PAGE_LOAD_WAIT_MAX_MS)
+            )
+            if BrowserManager.detect_checkpoint_url(page.url) or "login" in page.url.lower():
+                raise CheckpointError(f"Scout cần xác minh khi đọc comment tại {page.url}")
+            for _ in range(2):
+                await page.evaluate("window.scrollBy(0, 900)")
+                await page.wait_for_timeout(random.randint(700, 1400))
+            raw = await page.evaluate(EXTRACT_COMMENTS_JS, [post_url, min(limit, 200)])
+            return raw if isinstance(raw, list) else []
+        except CheckpointError:
+            raise
+        except Exception as exc:
+            logger.warning(f"Không bóc được comment từ {post_url}: {exc}")
             return []
 
     def filter_new_posts(

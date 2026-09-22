@@ -157,6 +157,7 @@ function startBackend(logDir, dataDir, root) {
       env: {
         ...process.env,
         RUN_MODE: "desktop",
+        AUTH_REQUIRED: "false",
         DATABASE_URL: toSqliteUrl(dataDir),
         JWT_SECRET: ensureJwtSecret(root),
         BROWSER_PROFILES_ROOT: path.join(dataDir, "browser_profiles"),

@@ -152,6 +152,7 @@ class ShooterWorker:
         self.config = config
         self._context = None
         self._page = None
+        self.last_comment_url: str = ""
 
     async def _ensure_context(self):
         """Đảm bảo browser context đã sẵn sàng."""
@@ -199,6 +200,7 @@ class ShooterWorker:
         8. finish_attempt cập nhật kết quả
         """
         page = await self._get_page()
+        self.last_comment_url = ""
 
         # 1. Kiểm tra rate limit (theo số LƯỢT thao tác)
         if dedup_store:
@@ -302,6 +304,7 @@ class ShooterWorker:
 
             if status == CommentStatus.SUCCESS:
                 logger.info("Comment thành công!")
+                self.last_comment_url = await self._find_comment_permalink(page, comment_text)
                 if delete_after:
                     await random_pause(2, 4)
                     await self.delete_comment(page, comment_text)
@@ -394,10 +397,11 @@ class ShooterWorker:
             await random_pause(1.0, 2.5)
 
             if media_paths:
-                logger.warning(
-                    "publish_post: đính kèm media chưa được hỗ trợ, bỏ qua %d file",
-                    len(media_paths),
-                )
+                if not await self._attach_media(page, media_paths):
+                    logger.error(
+                        "publish_post: không xác minh được ảnh đã được gắn vào composer; dừng trước khi submit"
+                    )
+                    return PublishResult(PublishStatus.FAILED, error="media_upload_not_verified")
 
             # Bấm Đăng
             submit = await self._first_selector(page, COMPOSER_SUBMIT_SELECTORS, timeout=6000)
@@ -435,6 +439,65 @@ class ShooterWorker:
             except Exception:
                 continue
         return None
+
+    async def _attach_media(self, page, media_paths: list) -> bool:
+        """Gắn ảnh vào composer và chỉ tiếp tục khi input file nhận đủ ảnh.
+
+        Facebook dùng input file ẩn trong hộp thoại tạo bài. Không click mù vào
+        nút "Ảnh/video": set_input_files vào input đang thuộc dialog ổn định hơn,
+        đồng thời vẫn fail-safe nếu DOM đổi hoặc Facebook chưa nhận đủ file.
+        """
+        selectors = [
+            '[role="dialog"] input[type="file"][accept*="image"]',
+            '[role="dialog"] input[type="file"]',
+        ]
+        file_input = None
+        for selector in selectors:
+            try:
+                file_input = await page.query_selector(selector)
+                if file_input:
+                    break
+            except Exception:
+                continue
+        if file_input is None:
+            logger.warning("Không tìm thấy input file trong composer")
+            return False
+
+        paths = [str(path) for path in media_paths if str(path).strip()]
+        if not paths:
+            return True
+        try:
+            await file_input.set_input_files(paths)
+            deadline = asyncio.get_running_loop().time() + 12
+            expected = len(paths)
+            while asyncio.get_running_loop().time() < deadline:
+                count = await file_input.evaluate(
+                    "el => el.files ? el.files.length : 0"
+                )
+                # Facebook thường xoá file list sau khi nhận upload; khi đó
+                # thumbnail blob trong composer là tín hiệu xác thực tốt hơn.
+                previews = await page.locator(
+                    '[role="dialog"] img[src^="blob:"], [role="dialog"] video'
+                ).count()
+                if count >= expected or previews >= expected:
+                    # Chờ một nhịp ngắn để Facebook dựng thumbnail/processing
+                    # trước khi nút Đăng được lấy lại.
+                    await asyncio.sleep(0.8)
+                    logger.info("Đã gắn {} ảnh vào composer", expected)
+                    return True
+                try:
+                    dialog_text = await page.locator('[role="dialog"]').last.text_content()
+                    if dialog_text and any(
+                        marker in dialog_text
+                        for marker in ("Không thể đọc file", "Không thể tải file", "Không thể tải ảnh lên")
+                    ):
+                        return False
+                except Exception:
+                    pass
+                await asyncio.sleep(0.25)
+        except Exception as exc:
+            logger.warning("Gắn ảnh vào composer thất bại: %s", exc)
+        return False
 
     async def _composer_textbox_visible(self, page) -> bool:
         """Ô nhập của hộp thoại soạn bài còn hiển thị không?"""
@@ -561,6 +624,41 @@ class ShooterWorker:
         except Exception as e:
             logger.debug(f"Lỗi verify comment: {e}")
             return CommentStatus.FAILED
+
+    @staticmethod
+    def _clean_comment_permalink(url: str) -> Optional[str]:
+        """Giữ lại permalink comment và ``comment_id``, bỏ tracking/fragment."""
+        if not url or "comment_id=" not in url:
+            return None
+        from urllib.parse import parse_qs, urlsplit, urlunsplit
+
+        parsed = urlsplit(url)
+        comment_id = parse_qs(parsed.query).get("comment_id", [""])[0]
+        if not comment_id or parsed.scheme != "https" or not (parsed.hostname or "").endswith("facebook.com"):
+            return None
+        return urlunsplit(("https", parsed.hostname, parsed.path, f"comment_id={comment_id}", ""))
+
+    async def _find_comment_permalink(self, page, comment_text: str) -> str:
+        """Bóc link comment vừa xác minh từ vùng DOM chứa đúng nội dung comment."""
+        key = " ".join((comment_text or "").split())[:40]
+        if not key:
+            return ""
+        try:
+            line = page.get_by_text(key, exact=False).first
+            if await line.count() == 0:
+                return ""
+            for level in range(3, 13):
+                container = line.locator(f"xpath=ancestor::*[{level}]")
+                hrefs = await container.locator("a").evaluate_all(
+                    "els => els.map(el => el.href).filter(Boolean)"
+                )
+                for href in hrefs:
+                    cleaned = self._clean_comment_permalink(href)
+                    if cleaned:
+                        return cleaned
+        except Exception as exc:
+            logger.debug(f"Không bóc được permalink comment: {exc}")
+        return ""
 
     async def delete_comment(self, page, comment_text: str) -> bool:
         """Xoá bình luận của CHÍNH mình vừa đăng, dựa vào nội dung.

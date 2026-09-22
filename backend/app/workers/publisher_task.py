@@ -3,20 +3,15 @@ Celery Task: Xử lý hàng đợi đăng bài tự động (Publisher Task).
 
 Quét các bản ghi post_publishes đến hạn và phân bổ cho clone có vai trò Poster.
 """
-import asyncio
 from datetime import datetime, timezone
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 
 from app.database import get_session_factory
 from app.models.enums import PublishStatus
 from app.models.post import PostPublish
 from app.services.publisher_service import as_utc, execute_publish
-from app.workers.celery_app import celery_app
-
-
-def run_async(coro):
-    return asyncio.run(coro)
+from app.workers.celery_app import celery_app, run_async
 
 
 async def _due_publishes() -> list[str]:
@@ -24,7 +19,10 @@ async def _due_publishes() -> list[str]:
     async with get_session_factory()() as db:
         result = await db.execute(
             select(PostPublish)
-            .where(PostPublish.status == PublishStatus.SCHEDULED.value)
+            .where(
+                PostPublish.status == PublishStatus.SCHEDULED.value,
+                or_(PostPublish.scheduled_at.is_(None), PostPublish.scheduled_at <= now),
+            )
             .order_by(PostPublish.scheduled_at.asc())
             .limit(10)
         )

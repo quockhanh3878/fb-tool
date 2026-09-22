@@ -8,6 +8,8 @@ khách hàng không cùng đổ vào Facebook một lúc.
 from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import select
+from fastapi import HTTPException
+from app.services.execution_policy import require_entitlement
 
 from app.config import get_settings
 from app.database import get_session_factory
@@ -28,6 +30,7 @@ from app.workers.browser_runtime import (
     BrowserRuntimeUnavailable,
     ScoutCheckpoint,
     scan_group_raw,
+    scrape_post_comments_raw,
     scrape_joined_groups_raw,
 )
 from app.workers.celery_app import celery_app, run_async
@@ -94,8 +97,14 @@ async def _scan_one(campaign_id: str, group_id: str) -> dict:
     async with get_session_factory()() as db:
         campaign = await db.get(Campaign, campaign_id)
         group = await db.get(CampaignGroup, group_id)
-        if campaign is None or group is None or not campaign.is_active:
+        if campaign is None or group is None or group.campaign_id != campaign.id or not campaign.is_active:
             return {"skipped": "campaign_or_group_missing"}
+        if not is_due(group):
+            return {"skipped": "not_due"}
+        try:
+            await require_entitlement(db, campaign.user_id, campaign)
+        except HTTPException:
+            return {"skipped": "policy_denied"}
 
         user = await db.get(User, campaign.user_id)
         clone = await _pick_scout_clone(db, campaign.user_id)
@@ -105,7 +114,8 @@ async def _scan_one(campaign_id: str, group_id: str) -> dict:
         try:
             cookies = decrypt_cookies(clone.cookie_data_encrypted)
         except Exception:
-            cookies = None
+            return {"error": "cookie_decryption_failed"}
+        await db.commit()
 
         # Track D — preflight: xác nhận nick còn đăng nhập trước khi quét.
         if settings.preflight_before_run:
@@ -148,13 +158,44 @@ async def _scan_one(campaign_id: str, group_id: str) -> dict:
         )
 
         mentions = await detect_mentions(db, campaign, group, fresh)
+        await notify_mentions(user, campaign.name, mentions, db=db)
+        leads = []
+        if campaign.lead_keywords:
+            # Chỉ quét permalink Scout vừa thấy; selector không khớp thì trả
+            # rỗng, không tạo lead giả. Các lượt sau dedup theo comment ID.
+            raw_comments = []
+            for raw_post in raw_posts:
+                post_url = str(raw_post.get("url") or "").strip()
+                if not post_url:
+                    continue
+                try:
+                    raw_comments.extend(
+                        await scrape_post_comments_raw(clone, post_url, cookies, limit=100)
+                    )
+                except ScoutCheckpoint:
+                    await _flag_scout_checkpoint(db, clone, "Đọc comment bị checkpoint")
+                    break
+                except BrowserRuntimeUnavailable:
+                    break
+                except Exception as exc:
+                    # Comment scan bổ sung không làm mất kết quả scan bài.
+                    raw_comments.append({"text": "", "_scan_error": str(exc)})
+            for raw_comment in raw_comments:
+                raw_comment.setdefault("post_url", raw_comment.get("url") or "")
+            leads = await detect_leads(
+                db,
+                campaign,
+                group,
+                raw_comments,
+                own_fb_id=clone.fb_user_id or "",
+            )
+            await notify_leads(user, campaign.name, leads, db=db)
         await db.commit()
-
-        await notify_mentions(user, campaign.name, mentions)
         return {
             "group": group.group_name,
             "ingested": len(fresh),
             "mentions": len(mentions),
+            "leads": len(leads),
             **stats,
         }
 
@@ -176,6 +217,10 @@ async def _discover_groups(campaign_id: str) -> dict:
         campaign = await db.get(Campaign, campaign_id)
         if campaign is None:
             return {"skipped": "campaign_missing"}
+        try:
+            await require_entitlement(db, campaign.user_id)
+        except HTTPException:
+            return {"skipped": "policy_denied"}
 
         user = await db.get(User, campaign.user_id)
         clone = await _pick_scout_clone(db, campaign.user_id)
@@ -185,7 +230,8 @@ async def _discover_groups(campaign_id: str) -> dict:
         try:
             cookies = decrypt_cookies(clone.cookie_data_encrypted)
         except Exception:
-            cookies = None
+            return {"error": "cookie_decryption_failed"}
+        await db.commit()
 
         try:
             raw_groups = await scrape_joined_groups_raw(clone, cookies)
@@ -198,12 +244,13 @@ async def _discover_groups(campaign_id: str) -> dict:
             result = await merge_discovered_groups(db, campaign, user, raw_groups)
         except SubscriptionInactive as exc:
             return {"error": str(exc)}
-        await db.commit()
-
         if user is not None and user.telegram_chat_id:
-            await NotificationService().send_text(
-                user.telegram_chat_id, _discovery_summary(campaign.name, result)
+            from app.services.outbox_service import queue_text
+
+            await queue_text(
+                db, user.telegram_chat_id, _discovery_summary(campaign.name, result)
             )
+        await db.commit()
         return result
 
 

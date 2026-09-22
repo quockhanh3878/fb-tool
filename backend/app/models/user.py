@@ -1,7 +1,7 @@
 """Bảng users + subscriptions."""
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -11,6 +11,7 @@ from app.models.enums import PaymentStatus, SubscriptionPlan, UserTier
 
 class User(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     __tablename__ = "users"
+    __table_args__ = (UniqueConstraint("telegram_chat_id", name="uq_users_telegram_chat"),)
 
     email: Mapped[str] = mapped_column(String(255), unique=True, index=True)
     hashed_password: Mapped[str] = mapped_column(String(255))
@@ -18,6 +19,7 @@ class User(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     telegram_chat_id: Mapped[str | None] = mapped_column(String(64), index=True)
     # Mã dùng 1 lần để người dùng gõ trong Telegram nhằm liên kết chat_id.
     telegram_link_code: Mapped[str | None] = mapped_column(String(16), index=True)
+    telegram_link_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     tier: Mapped[str] = mapped_column(String(20), default=UserTier.STARTER.value)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     is_admin: Mapped[bool] = mapped_column(Boolean, default=False)

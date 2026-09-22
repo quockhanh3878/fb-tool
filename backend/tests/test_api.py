@@ -1,6 +1,12 @@
 # -*- coding: utf-8 -*-
 """
-Bộ test API + service của backend — chạy OFFLINE hoàn toàn.
+Bộ scenario lịch sử của API trước đợt security hardening.
+
+Entry point hiện hành: pytest theo backend/pytest.ini hoặc
+bash backend/tests/run_container_tests.sh từ gốc workspace.
+File này được giữ để chuyển dần các scenario chức năng; các kỳ vọng cũ về
+payment confirm, webhook, desktop login và publish-now không còn là hợp đồng
+được hỗ trợ. Không dùng kết quả scenario cũ làm điều kiện phát hành.
 
 Không cần Docker, PostgreSQL, Redis, OpenAI hay Facebook: dùng SQLite tạm
 và httpx ASGITransport gọi thẳng vào app.
@@ -9,6 +15,7 @@ Chạy:
     python tests/test_api.py
 """
 import asyncio
+import base64
 import os
 import random
 import sys
@@ -23,8 +30,10 @@ os.chdir(ROOT)
 DB_FILE = Path(tempfile.mkdtemp()) / "test_api.db"
 os.environ.update(
     DATABASE_URL=f"sqlite+aiosqlite:///{DB_FILE.as_posix()}",
-    JWT_SECRET="test-secret-key-only-for-offline-test",
-    COOKIE_ENCRYPTION_KEY="",
+    APP_ENV="test",
+    DEBUG="false",
+    JWT_SECRET="offline-api-test-secret-32-bytes-minimum-2026",
+    COOKIE_ENCRYPTION_KEY=base64.urlsafe_b64encode(bytes(range(32))).decode(),
     TELEGRAM_BOT_TOKEN="",
     OPENAI_API_KEY="",
     AUTH_RATE_LIMIT_PER_MINUTE="100",
@@ -534,6 +543,189 @@ async def run_api_tests(client: httpx.AsyncClient) -> None:
         and len(_ingest_notify_calls) == 1
         and _ingest_notify_calls[0][1] >= 1,
         str(_ingest_notify_calls),
+    )
+
+    # ── 4f. San lead qua comment (leads) ─────────────────────────────────
+    section("4f. San lead qua comment (leads)")
+    from app.services.lead_service import match_lead_keywords, RawComment, lead_content_hash
+
+    check(
+        "match_lead_keywords bo dau + ha chu thuong",
+        match_lead_keywords("Ai biet dia chi may Ao Dai gia re khong", ["ao dai"])
+        == ["ao dai"],
+    )
+    check(
+        "match_lead_keywords khong khop -> rong",
+        match_lead_keywords("Hom nay troi dep qua", ["ao dai"]) == [],
+    )
+    check(
+        "lead_content_hash uu tien fb_comment_id",
+        lead_content_hash(RawComment(text="x", fb_comment_id="cmt_1")) == "fbc:cmt_1",
+    )
+    check(
+        "lead_content_hash fallback ve content_hash khi khong co fb_comment_id",
+        lead_content_hash(RawComment(text="x", author_fb_id="100001")).startswith("fbc:") is False,
+    )
+
+    resp = await client.post(
+        "/api/auth/register",
+        json={"email": "lead@test.vn", "password": "matkhau123", "display_name": "Lead"},
+    )
+    l_auth = {"Authorization": f"Bearer {resp.json()['access_token']}"}
+    resp = await client.post(
+        "/api/campaigns",
+        headers=l_auth,
+        json={"name": "Camp san lead", "lead_keywords": ["ao dai", "vest cuoi"]},
+    )
+    l_cid = resp.json()["id"]
+    check(
+        "Campaign luu lead_keywords",
+        resp.json()["lead_keywords"] == ["ao dai", "vest cuoi"],
+        resp.text[:200],
+    )
+
+    resp = await client.post(
+        f"/api/campaigns/{l_cid}/groups",
+        headers=l_auth,
+        json={"group_url": "https://www.facebook.com/groups/sanlead1/"},
+    )
+    l_gid = resp.json()["id"]
+
+    resp = await client.post(
+        f"/api/clones",
+        headers=l_auth,
+        json={"display_name": "Nick quet lead", "role": "scout"},
+    )
+    l_clone_id = resp.json()["id"]
+    async with get_session_factory()() as _ldb:
+        from app.models.clone_account import CloneAccount as _CA
+        _lclone = await _ldb.get(_CA, l_clone_id)
+        _lclone.fb_user_id = "100999888"
+        await _ldb.commit()
+
+    lead_raw_comments = [
+        {
+            "id": "cmt_1",
+            "authorId": "100000001",
+            "author": "Chi Mai",
+            "text": "Ai biet cho nao may ao dai dep gia mem khong, minh dang can gap",
+            "url": "https://fb.com/p/1",
+        },
+        {
+            "id": "cmt_2",
+            "authorId": "100000002",
+            "author": "Anh Tuan",
+            "text": "Hom nay di an pho ngon qua troi",
+            "url": "https://fb.com/p/1",
+        },
+        {
+            "id": "cmt_3",
+            "authorId": "100999888",  # trung fb_user_id cua chinh nick dang quet
+            "author": "Nick quet lead",
+            "text": "Shop minh co may vest cuoi dep lam moi nguoi oi",
+            "url": "https://fb.com/p/1",
+        },
+    ]
+    resp = await client.post(
+        f"/api/campaigns/{l_cid}/ingest-comments",
+        headers=l_auth,
+        json={"group_id": l_gid, "clone_id": l_clone_id, "comments": lead_raw_comments},
+    )
+    check(
+        "Ingest-comments: 1/3 cmt khop tu khoa (loai cmt khong khop + cmt cua chinh nick)",
+        resp.status_code == 201 and resp.json()["leads"] == 1,
+        resp.text[:200],
+    )
+
+    resp = await client.post(
+        f"/api/campaigns/{l_cid}/ingest-comments",
+        headers=l_auth,
+        json={"group_id": l_gid, "clone_id": l_clone_id, "comments": lead_raw_comments},
+    )
+    check(
+        "Ingest-comments lai cung fb_comment_id -> dedup, 0 lead moi",
+        resp.json()["leads"] == 0,
+        resp.text[:200],
+    )
+
+    resp = await client.get("/api/leads", headers=l_auth)
+    check(
+        "GET /api/leads tra ve 1 lead",
+        resp.status_code == 200 and resp.json()["total"] == 1,
+        resp.text[:200],
+    )
+    lead_row = resp.json()["items"][0]
+    check("Lead giu dung author_fb_id", lead_row["author_fb_id"] == "100000001")
+    check("Lead giu dung fb_comment_id", lead_row["fb_comment_id"] == "cmt_1")
+    check("Lead o trang thai new", lead_row["status"] == "new")
+
+    resp = await client.get("/api/leads/unread-count", headers=l_auth)
+    check("unread-count = 1", resp.json()["count"] == 1, resp.text[:200])
+
+    lead_id = lead_row["id"]
+    resp = await client.post(f"/api/leads/{lead_id}/read", headers=l_auth)
+    check(
+        "POST /read -> status = read + seen_at set",
+        resp.json()["status"] == "read" and bool(resp.json()["seen_at"]),
+        resp.text[:200],
+    )
+    resp = await client.get("/api/leads/unread-count", headers=l_auth)
+    check("unread-count giam con 0 sau khi doc", resp.json()["count"] == 0)
+
+    resp = await client.post(f"/api/leads/{lead_id}/archive", headers=l_auth)
+    check("POST /archive -> status = archived", resp.json()["status"] == "archived")
+
+    resp = await client.post(f"/api/leads/{lead_id}/read", headers=disc_auth)
+    check("Cach ly da khach: user khac dong lead -> 404", resp.status_code == 404)
+    resp = await client.get("/api/leads", headers=disc_auth)
+    check("User khac khong thay lead nao", resp.json()["total"] == 0)
+
+    resp = await client.post(
+        "/api/campaigns", headers=l_auth, json={"name": "Camp khong lead keyword"}
+    )
+    nlk_cid = resp.json()["id"]
+    resp = await client.post(
+        f"/api/campaigns/{nlk_cid}/groups",
+        headers=l_auth,
+        json={"group_url": "https://www.facebook.com/groups/sanlead2/"},
+    )
+    nlk_gid = resp.json()["id"]
+    resp = await client.post(
+        f"/api/campaigns/{nlk_cid}/ingest-comments",
+        headers=l_auth,
+        json={"group_id": nlk_gid, "comments": lead_raw_comments},
+    )
+    check(
+        "lead_keywords rong -> tinh nang tat, khong tao lead",
+        resp.json()["leads"] == 0,
+        resp.text[:200],
+    )
+
+    resp = await client.delete(f"/api/leads/{lead_id}", headers=l_auth)
+    check("DELETE /api/leads/{id} -> 204", resp.status_code == 204)
+
+    from app.services.lead_service import notify_leads as _notify_leads
+
+    class _FakeLead:
+        matched_keywords = ["ao dai"]
+
+    _lrec = _RecNotifier()
+    _ldid = await _notify_leads(_FakeUser(), "Camp san lead", [_FakeLead()], _lrec)
+    check(
+        "notify_leads: co lead moi + user co telegram_chat_id -> ban",
+        _ldid is True and len(_lrec.sent) == 1 and "Camp san lead" in _lrec.sent[0][1],
+    )
+    _lrec2 = _RecNotifier()
+    _ldid2 = await _notify_leads(_FakeUser(), "Camp", [], _lrec2)
+    check(
+        "notify_leads: khong co lead moi -> khong ban",
+        _ldid2 is False and _lrec2.sent == [],
+    )
+    _lrec3 = _RecNotifier()
+    _ldid3 = await _notify_leads(_NoChatUser(), "Camp", [_FakeLead()], _lrec3)
+    check(
+        "notify_leads: user chua lien ket Telegram -> khong ban",
+        _ldid3 is False and _lrec3.sent == [],
     )
 
     # ── 5. Script Studio ────────────────────────────────────────────────
@@ -1883,6 +2075,17 @@ async def run_api_tests(client: httpx.AsyncClient) -> None:
 
         r3 = await client.get("/api/settings", headers=desktop_auth)
         check("Desktop mode: GET /api/settings 200", r3.status_code == 200, r3.text)
+
+        r_c = await client.get("/api/campaigns", headers=desktop_auth)
+        check("Desktop mode: tu dong tao chien dich mac dinh", r_c.status_code == 200 and len(r_c.json()) >= 1, r_c.text)
+        check("Desktop mode: ten chien dich dung Writing Commission", "Writing Commission" in r_c.json()[0]["name"], r_c.text)
+
+        r_p = await client.get("/api/publishing", headers=desktop_auth)
+        check("Desktop mode: tu dong tao bai dang mau mac dinh", r_p.status_code == 200 and len(r_p.json()["items"]) >= 1)
+        check("Desktop mode: tieu de bai dang dung mau", "WRITING COMMISSION" in r_p.json()["items"][0]["title"].upper())
+        check("Desktop mode: bai dang mau mac dinh repeat 14 ngay", r_p.json()["items"][0]["repeat_interval_days"] == 14)
+        check("Desktop mode: bai dang mau mac dinh auto bump bat", r_p.json()["items"][0]["auto_bump"] is True)
+        check("Desktop mode: bai dang mau mac dinh bump hours [10, 17, 19, 21]", r_p.json()["items"][0]["bump_hours"] == [10, 17, 19, 21])
         check(
             "Desktop mode: chua cau hinh gi -> openai/telegram deu chua set",
             r3.json() == {"openai_api_key_set": False, "telegram_bot_token_set": False},
@@ -1929,6 +2132,109 @@ async def run_api_tests(client: httpx.AsyncClient) -> None:
         )
     finally:
         _settings.run_mode = "saas"
+
+    section("14k. Dang bai dinh ky 2 tuan va auto bump 4 lan/ngay")
+    from app.models.campaign import BumpSchedule as _BumpSchedule
+    from app.models.post import PostPublish as _PostPublish
+
+    res_camp = await client.post(
+        "/api/campaigns",
+        headers=auth,
+        json={"name": "Chien dich 14k", "service_name": "Test Service"},
+    )
+    camp14k_id = res_camp.json()["id"]
+
+    # 1. API POST /api/publishing mac dinh nhan repeat_interval_days=14, auto_bump=True, bump_hours=[10, 17, 19, 21]
+    res_pub = await client.post(
+        "/api/publishing",
+        headers=auth,
+        json={
+            "campaign_id": camp14k_id,
+            "title": "Bai test dinh ky 2 tuan",
+            "content_template": "Noi dung test dang dinh ky 2 tuan mot lan",
+            "target_groups": [
+                {"group_id": "g1", "group_name": "Nhom 1", "group_url": "https://facebook.com/groups/g1"},
+            ],
+        },
+    )
+    check("API POST publishing tra 201", res_pub.status_code == 201, res_pub.text)
+    pub_data = res_pub.json()
+    check("Mac dinh repeat_interval_days = 14", pub_data.get("repeat_interval_days") == 14, str(pub_data))
+    check("Mac dinh auto_bump = True", pub_data.get("auto_bump") is True, str(pub_data))
+    check("Mac dinh bump_hours = [10, 17, 19, 21]", pub_data.get("bump_hours") == [10, 17, 19, 21], str(pub_data))
+
+    test_pub_id = pub_data["id"]
+
+    # 2. Tao clone poster de execute_publish
+    resp_cl = await client.post(
+        "/api/clones",
+        headers=auth,
+        json={"display_name": "Poster 14k", "role": "poster", "daily_post_limit": 5},
+    )
+    poster14k_id = resp_cl.json()["id"]
+    await client.post(
+        f"/api/clones/{poster14k_id}/upload-cookie",
+        headers=auth,
+        files={"file": ("cookies.json", good_cookie, "application/json")},
+    )
+    await client.post(
+        f"/api/clones/{poster14k_id}/transition", headers=auth,
+        json={"event": "warmup_complete"},
+    )
+
+    from sqlalchemy import select as _select
+
+    # 3. Mock publish_post_real thanh cong va tra ve post_url
+    fake_posted_url = "https://facebook.com/groups/g1/posts/99887766"
+
+    async def _fake_pub_14k(clone, group_url, content, cookies=None):
+        return {"status": "published", "post_url": fake_posted_url, "error": None}
+
+    _orig_publish = _pub_svc.publish_post_real
+    _pub_svc.publish_post_real = _fake_pub_14k
+    try:
+        async with _gsf()() as _db:
+            out_14k = await _pub_svc.execute_publish(_db, test_pub_id)
+            await _db.commit()
+
+            # Kiem tra BumpSchedule duoc tao tu dong voi link fake_posted_url va cron_schedule [10, 17, 19, 21]
+            res_bump = await _db.execute(
+                _select(_BumpSchedule).where(
+                    _BumpSchedule.campaign_id == camp14k_id,
+                    _BumpSchedule.target_post_url == fake_posted_url,
+                )
+            )
+            created_bump = res_bump.scalars().first()
+
+            # Kiem tra PostPublish chu ky tiep theo (scheduled sau 14 ngay)
+            res_next = await _db.execute(
+                _select(_PostPublish).where(
+                    _PostPublish.campaign_id == camp14k_id,
+                    _PostPublish.status == "scheduled",
+                )
+            )
+            next_posts = res_next.scalars().all()
+    finally:
+        _pub_svc.publish_post_real = _orig_publish
+
+    check("execute_publish 14k thanh cong 1 nhom", out_14k.get("published_count") == 1, str(out_14k))
+    check("Tu dong tao BumpSchedule cho link da dang", created_bump is not None)
+    if created_bump:
+        check("BumpSchedule co cron_schedule [10, 17, 19, 21]", created_bump.cron_schedule == [10, 17, 19, 21], str(created_bump.cron_schedule))
+        check("BumpSchedule co bump_messages khong rong", len(created_bump.bump_messages) >= 1)
+        check("BumpSchedule is_active = True", created_bump.is_active is True)
+
+    check("Tu dong len lich PostPublish tiep theo sau 14 ngay", len(next_posts) >= 1)
+    if next_posts:
+        np = sorted(next_posts, key=lambda p: p.created_at or datetime.min, reverse=True)[0]
+        check("PostPublish moi co repeat_interval_days = 14", np.repeat_interval_days == 14)
+        check("PostPublish moi co auto_bump = True", np.auto_bump is True)
+        check("PostPublish moi co bump_hours = [10, 17, 19, 21]", np.bump_hours == [10, 17, 19, 21])
+
+    # Don dep test data
+    await client.delete(f"/api/publishing/{test_pub_id}", headers=auth)
+    await client.delete(f"/api/clones/{poster14k_id}", headers=auth)
+    await client.delete(f"/api/campaigns/{camp14k_id}", headers=auth)
 
 
 def run_unit_tests() -> None:
@@ -2300,6 +2606,37 @@ def run_unit_tests() -> None:
     check("Sai khung gio -> khong bump", is_bump_due(bump, local_now) is False)
     bump.bump_messages = ["{Up|Len} bai"]
     check("Bump message ho tro spintax", pick_message(bump, random.Random(1)) in ("Up bai", "Len bai"))
+
+    # ── 16b. Lech gio hanh dong: chong may moc (jitter) ─────────────────
+    section("16b. Lech gio dang bai/bump - jitter chong may moc")
+    from app.services.anti_ban import schedule_jitter_seconds
+    from app.workers.bump_task import bump_jitter_seconds
+
+    _jitter_samples = [schedule_jitter_seconds(random.Random(seed)) for seed in range(200)]
+    check(
+        "schedule_jitter_seconds: luon lech 5-10 phut (300-600s), ca 2 dau",
+        all(300 <= abs(v) <= 600 for v in _jitter_samples),
+        str(sorted(set(_jitter_samples))[:5]),
+    )
+    check(
+        "schedule_jitter_seconds: co ca lech som (am) va lech tre (duong)",
+        any(v < 0 for v in _jitter_samples) and any(v > 0 for v in _jitter_samples),
+    )
+
+    _bump_jitters = [bump_jitter_seconds("bump-1", "2026-09-12", h) for h in (10, 14, 18, 21)]
+    check(
+        "bump_jitter_seconds: luon trong 5-10 phut nhu schedule_jitter_seconds",
+        all(300 <= abs(v) <= 600 for v in _bump_jitters),
+    )
+    check(
+        "bump_jitter_seconds: on dinh (cung bump/ngay/gio -> cung ket qua)",
+        bump_jitter_seconds("bump-1", "2026-09-12", 10) == _bump_jitters[0],
+    )
+    check(
+        "bump_jitter_seconds: doi ngay -> lech khac (khong dinh mot mau co dinh)",
+        bump_jitter_seconds("bump-1", "2026-09-13", 10) != _bump_jitters[0]
+        or bump_jitter_seconds("bump-1", "2026-09-12", 14) != _bump_jitters[0],
+    )
 
     check("Cookie du c_user+xs -> hop le", cookies_look_valid([{"name": "c_user"}, {"name": "xs"}]) is True)
     check("Cookie thieu xs -> khong hop le", cookies_look_valid([{"name": "c_user"}]) is False)

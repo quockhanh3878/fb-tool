@@ -6,6 +6,7 @@ Access token sống 15 phút, refresh token 7 ngày. Mỗi token mang claim
 """
 from datetime import datetime, timedelta, timezone
 from typing import Any
+from uuid import uuid4
 
 import bcrypt
 import jwt
@@ -24,14 +25,16 @@ class TokenError(Exception):
 
 
 def hash_password(password: str) -> str:
-    payload = password.encode("utf-8")[:_BCRYPT_MAX_BYTES]
+    payload = password.encode("utf-8")
+    if len(payload) > _BCRYPT_MAX_BYTES:
+        raise ValueError("Password must not exceed 72 UTF-8 bytes")
     return bcrypt.hashpw(payload, bcrypt.gensalt()).decode("utf-8")
 
 
 def verify_password(password: str, hashed: str) -> bool:
     try:
         return bcrypt.checkpw(
-            password.encode("utf-8")[:_BCRYPT_MAX_BYTES], hashed.encode("utf-8")
+            password.encode("utf-8"), hashed.encode("utf-8")
         )
     except (ValueError, TypeError):
         return False
@@ -45,6 +48,7 @@ def _create_token(subject: str, token_type: str, expires_delta: timedelta) -> st
         "type": token_type,
         "iat": int(now.timestamp()),
         "exp": int((now + expires_delta).timestamp()),
+        "jti": uuid4().hex,
     }
     return jwt.encode(payload, settings.jwt_secret, algorithm=settings.jwt_algorithm)
 
@@ -72,7 +76,8 @@ def decode_token(token: str, expected_type: str = ACCESS_TOKEN_TYPE) -> str:
     settings = get_settings()
     try:
         payload = jwt.decode(
-            token, settings.jwt_secret, algorithms=[settings.jwt_algorithm]
+            token, settings.jwt_secret, algorithms=[settings.jwt_algorithm],
+            options={"require": ["sub", "type", "iat", "exp", "jti"]},
         )
     except jwt.ExpiredSignatureError as exc:
         raise TokenError("Token đã hết hạn") from exc

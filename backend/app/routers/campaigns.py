@@ -33,6 +33,7 @@ from app.schemas import (
     ScriptUpdate,
 )
 from app.services.facebook_utils import InvalidGroupURL, parse_group_ref
+from app.services.execution_policy import cancel_campaign_jobs, lock_user
 from app.services.quota import (
     QuotaExceeded,
     SubscriptionInactive,
@@ -99,11 +100,34 @@ async def update_campaign(
     db: AsyncSession = Depends(get_db),
 ):
     data = payload.model_dump(exclude_unset=True)
+    if data.get("is_active") is False:
+        await cancel_campaign_jobs(db, campaign)
     delay_min = data.get("delay_min_seconds", campaign.delay_min_seconds)
     delay_max = data.get("delay_max_seconds", campaign.delay_max_seconds)
     if delay_max < delay_min:
         raise HTTPException(
             status_code=422, detail="delay_max_seconds phải >= delay_min_seconds"
+        )
+    bump_hours = data.get("publish_bump_hours", campaign.publish_bump_hours)
+    if bump_hours is not None:
+        if len(bump_hours) > 24 or any(
+            type(hour) is not int or not 0 <= hour <= 23 for hour in bump_hours
+        ):
+            raise HTTPException(
+                status_code=422,
+                detail="publish_bump_hours phải chứa giờ trong khoảng 0..23",
+            )
+        data["publish_bump_hours"] = sorted(set(bump_hours))
+    jitter_min = data.get(
+        "bump_jitter_min_minutes", campaign.bump_jitter_min_minutes
+    )
+    jitter_max = data.get(
+        "bump_jitter_max_minutes", campaign.bump_jitter_max_minutes
+    )
+    if jitter_max < jitter_min:
+        raise HTTPException(
+            status_code=422,
+            detail="bump_jitter_max_minutes phải >= bump_jitter_min_minutes",
         )
     for field, value in data.items():
         setattr(campaign, field, value)
@@ -150,6 +174,7 @@ async def activate_campaign(
 async def pause_campaign(
     campaign: Campaign = Depends(owned_campaign), db: AsyncSession = Depends(get_db)
 ):
+    await cancel_campaign_jobs(db, campaign)
     campaign.is_active = False
     await db.commit()
     await db.refresh(campaign)
@@ -232,8 +257,19 @@ async def discover_groups(
         raise _quota_error(exc) from exc
 
     from app.workers.scout_task import discover_joined_groups
+    from app.config import get_settings
 
-    discover_joined_groups.delay(campaign.id)
+    if get_settings().run_mode == "desktop":
+        from app.workers.job_queue import job_queue
+        from app.workers.scout_task import _discover_groups
+
+        queued = await job_queue.enqueue(
+            lambda: _discover_groups(campaign.id), key=f"discover:{campaign.id}",
+        )
+        if not queued:
+            raise HTTPException(status_code=409, detail="Đã có job tương tự hoặc hàng đợi đang đầy")
+    else:
+        discover_joined_groups.delay(campaign.id)
     return GroupDiscoverOut(
         queued=True,
         message=(

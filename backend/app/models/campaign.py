@@ -7,6 +7,14 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.database import Base
 from app.models.base import TimestampMixin, UUIDPrimaryKeyMixin
 from app.models.enums import CampaignMode, GroupStatus, ScriptType
+from app.services.publishing_defaults import (
+    DEFAULT_BUMP_JITTER_ENABLED,
+    DEFAULT_BUMP_JITTER_MAX_MINUTES,
+    DEFAULT_BUMP_JITTER_MIN_MINUTES,
+    DEFAULT_PUBLISH_REPEAT_INTERVAL_DAYS,
+    DEFAULT_SCHEDULE_TIMEZONE,
+    default_bump_hours,
+)
 
 
 class Campaign(Base, UUIDPrimaryKeyMixin, TimestampMixin):
@@ -29,6 +37,9 @@ class Campaign(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     ai_comments_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
     # Từ khoá thương hiệu cho hộp thư "Nhắc tới" — rỗng thì tính năng tắt.
     mention_keywords: Mapped[list] = mapped_column(JSON, default=list)
+    # Từ khoá săn lead qua COMMENT (khác mention_keywords: so khớp nội dung
+    # bình luận, không phải nội dung bài) — rỗng thì tính năng tắt.
+    lead_keywords: Mapped[list] = mapped_column(JSON, default=list)
     whitelist_keywords: Mapped[list] = mapped_column(JSON, default=list)
     blacklist_keywords: Mapped[list] = mapped_column(JSON, default=list)
     min_relevance_score: Mapped[float] = mapped_column(Float, default=0.7)
@@ -38,6 +49,25 @@ class Campaign(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     max_comments_per_day: Mapped[int] = mapped_column(Integer, default=20)
     delay_min_seconds: Mapped[int] = mapped_column(Integer, default=300)
     delay_max_seconds: Mapped[int] = mapped_column(Integer, default=900)
+
+    # Cấu hình đăng bài/bump mặc định của campaign; từng PostPublish có thể ghi đè.
+    publish_repeat_interval_days: Mapped[int] = mapped_column(
+        Integer, default=DEFAULT_PUBLISH_REPEAT_INTERVAL_DAYS
+    )
+    publish_auto_bump: Mapped[bool] = mapped_column(Boolean, default=True)
+    publish_bump_hours: Mapped[list] = mapped_column(JSON, default=default_bump_hours)
+    schedule_timezone: Mapped[str] = mapped_column(
+        String(64), default=DEFAULT_SCHEDULE_TIMEZONE
+    )
+    bump_jitter_enabled: Mapped[bool] = mapped_column(
+        Boolean, default=DEFAULT_BUMP_JITTER_ENABLED
+    )
+    bump_jitter_min_minutes: Mapped[int] = mapped_column(
+        Integer, default=DEFAULT_BUMP_JITTER_MIN_MINUTES
+    )
+    bump_jitter_max_minutes: Mapped[int] = mapped_column(
+        Integer, default=DEFAULT_BUMP_JITTER_MAX_MINUTES
+    )
 
     user = relationship("User", back_populates="campaigns")
     groups = relationship(

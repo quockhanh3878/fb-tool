@@ -3,8 +3,7 @@ Mã hoá cookie clone trước khi ghi xuống database.
 
 Cookie Facebook tương đương mật khẩu: lộ DB là mất tài khoản khách hàng.
 Dùng Fernet (AES-128-CBC + HMAC) với khoá lấy từ env COOKIE_ENCRYPTION_KEY.
-Khi env trống (dev/test), sinh khoá tạm trong RAM — dữ liệu mã hoá bằng khoá
-tạm sẽ không giải được sau khi restart, đúng như mong muốn cho môi trường dev.
+Khóa phải bền vững và được cấp từ bên ngoài database cho mọi tiến trình.
 """
 import json
 from functools import lru_cache
@@ -23,7 +22,7 @@ def _fernet() -> Fernet:
     settings = get_settings()
     key = settings.cookie_encryption_key.strip()
     if not key:
-        key = Fernet.generate_key().decode()
+        raise ValueError("COOKIE_ENCRYPTION_KEY is required")
     if isinstance(key, str):
         key = key.encode()
     return Fernet(key)

@@ -191,6 +191,20 @@ def comment_gap_seconds(
     )
 
 
+def schedule_jitter_seconds(
+    rng: random.Random | None = None, *, min_minutes: int = 5, max_minutes: int = 10
+) -> int:
+    """Lệch mốc giờ đã đặt (đăng bài lặp lại, bump) 5-10 phút, sớm hoặc trễ ngẫu nhiên.
+
+    Hành vi đúng y hệt mốc chẵn mỗi lần là dấu hiệu máy móc dễ bị soi — dùng
+    hàm này để dịch ``scheduled_at``/mốc bump ra khỏi con số tròn.
+    """
+    rng = rng or random
+    magnitude = rng.uniform(min_minutes, max_minutes) * 60
+    sign = rng.choice((-1, 1))
+    return int(sign * magnitude)
+
+
 class AdaptiveRateLimiter:
     """Đọc lịch sử comment_actions để quyết định nhịp bắn tiếp theo."""
 

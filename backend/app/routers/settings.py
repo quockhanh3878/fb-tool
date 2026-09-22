@@ -39,17 +39,18 @@ async def update_app_settings(
     db: AsyncSession = Depends(get_db),
 ):
     _require_desktop_mode()
-    settings = get_settings()
-
     if payload.openai_api_key is not None:
         await svc.set_value(db, svc.OPENAI_API_KEY, payload.openai_api_key.strip())
-        settings.openai_api_key = payload.openai_api_key.strip()
 
     if payload.telegram_bot_token is not None:
         await svc.set_value(db, svc.TELEGRAM_BOT_TOKEN, payload.telegram_bot_token.strip())
-        settings.telegram_bot_token = payload.telegram_bot_token.strip()
 
     await db.commit()
+    settings = get_settings()
+    if payload.openai_api_key is not None:
+        settings.openai_api_key = payload.openai_api_key.strip()
+    if payload.telegram_bot_token is not None:
+        settings.telegram_bot_token = payload.telegram_bot_token.strip()
     return AppSettingsOut(
         openai_api_key_set=bool(await svc.get_value(db, svc.OPENAI_API_KEY)),
         telegram_bot_token_set=bool(await svc.get_value(db, svc.TELEGRAM_BOT_TOKEN)),

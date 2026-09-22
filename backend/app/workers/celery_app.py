@@ -8,6 +8,7 @@ import asyncio
 
 from celery import Celery
 from celery.schedules import crontab
+from celery.signals import worker_process_shutdown
 
 from app.config import get_settings
 
@@ -25,6 +26,7 @@ celery_app = Celery(
         "app.workers.health_check_task",
         "app.workers.publisher_task",
         "app.workers.preflight_task",
+        "app.workers.maintenance_task",
     ],
 )
 
@@ -35,14 +37,17 @@ celery_app.conf.update(
     timezone="Asia/Ho_Chi_Minh",
     enable_utc=True,
     task_acks_late=True,
-    # Một worker chỉ giữ 1 task: hai comment không bao giờ chạy song song
-    # trên cùng một tài khoản Facebook (bài học Phase 1).
     worker_prefetch_multiplier=1,
+    task_reject_on_worker_lost=True,
     task_time_limit=30 * 60,
     task_soft_time_limit=25 * 60,
 )
 
 celery_app.conf.beat_schedule = {
+    "durable-maintenance": {
+        "task": "app.workers.maintenance_task.maintain",
+        "schedule": 30.0,
+    },
     "scout-scan-all": {
         "task": "app.workers.scout_task.scan_all_active_campaigns",
         "schedule": 60.0,
@@ -74,14 +79,25 @@ celery_app.conf.beat_schedule = {
 }
 
 
+_runner: asyncio.Runner | None = None
+
+
 def run_async(coro):
-    """Chạy coroutine trong Celery task (worker là code đồng bộ)."""
-    try:
-        loop = asyncio.get_event_loop_policy().new_event_loop()
-        asyncio.set_event_loop(loop)
-        return loop.run_until_complete(coro)
-    finally:
+    """Run every task in a worker process on the same event loop."""
+    global _runner
+    if _runner is None:
+        _runner = asyncio.Runner()
+    return _runner.run(coro)
+
+
+@worker_process_shutdown.connect
+def close_worker_runtime(**kwargs):
+    global _runner
+    if _runner is not None:
+        from app.database import dispose_engine
+
         try:
-            loop.close()
-        except Exception:
-            pass
+            _runner.run(dispose_engine())
+        finally:
+            _runner.close()
+            _runner = None

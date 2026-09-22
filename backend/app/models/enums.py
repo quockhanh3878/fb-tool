@@ -47,6 +47,8 @@ class PublishStatus(StrEnum):
     PUBLISHED = "published"
     PARTIALLY_PUBLISHED = "partially_published"
     FAILED = "failed"
+    UNKNOWN_OUTCOME = "unknown_outcome"
+    CANCELLED = "cancelled"
 
 
 class AccountState(StrEnum):
@@ -84,10 +86,19 @@ class PostStatus(StrEnum):
     COMMENTED = "commented"
     SKIPPED = "skipped"
     EXPIRED = "expired"
+    NOTIFICATION_PENDING = "notification_pending"
 
 
 class MentionStatus(StrEnum):
     """Hộp thư 'Nhắc tới' — vòng đời một lượt nhắc tên thương hiệu."""
+
+    NEW = "new"
+    READ = "read"
+    ARCHIVED = "archived"
+
+
+class LeadStatus(StrEnum):
+    """Săn lead qua comment — vòng đời một lượt bình luận khớp từ khoá."""
 
     NEW = "new"
     READ = "read"
@@ -100,6 +111,8 @@ class CommentStatus(StrEnum):
     SUCCESS = "success"
     FAILED = "failed"
     SHADOWBANNED = "shadowbanned"
+    UNKNOWN_OUTCOME = "unknown_outcome"
+    CANCELLED = "cancelled"
 
 
 class HealthEventType(StrEnum):

@@ -10,9 +10,12 @@ from datetime import timedelta
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select, update
+from sqlalchemy.exc import IntegrityError
 
 from app.database import get_db
-from app.dependencies import get_current_user
+from app.dependencies import get_admin_user, get_current_user, rate_limit
+from app.models.operations import PaymentOrder
 from app.models.base import as_utc, utcnow
 from app.models.enums import PaymentStatus
 from app.models.user import Subscription, User
@@ -64,6 +67,12 @@ class PaymentIntentOut(BaseModel):
     instructions: str
 
 
+class ConfirmPaymentRequest(BaseModel):
+    order_id: str = Field(min_length=32, max_length=32)
+    transaction_reference: str = Field(min_length=8, max_length=160, pattern=r"^[A-Za-z0-9_.:-]+$")
+    amount_vnd: int = Field(gt=0)
+
+
 @router.get("/plans", response_model=list[PlanOut])
 async def list_plans():
     return [PlanOut(**{**spec.__dict__, "plan": spec.plan.value}) for spec in PLANS.values()]
@@ -95,7 +104,7 @@ async def usage(user: User = Depends(get_current_user), db: AsyncSession = Depen
     )
 
 
-@router.post("/subscribe", response_model=PaymentIntentOut)
+@router.post("/subscribe", response_model=PaymentIntentOut, dependencies=[Depends(rate_limit("payment-order", 10))])
 async def subscribe(
     payload: SubscribeRequest,
     user: User = Depends(get_current_user),
@@ -106,14 +115,15 @@ async def subscribe(
         raise HTTPException(status_code=422, detail=f"Gói không tồn tại: {payload.plan}")
     spec = get_plan(payload.plan)
 
-    subscription = await get_subscription(db, user)
-    if subscription is None:
-        subscription = Subscription(user_id=user.id)
-        db.add(subscription)
-    subscription.payment_status = PaymentStatus.PENDING.value
+    order = PaymentOrder(
+        user_id=user.id, plan=payload.plan, months=payload.months,
+        amount_vnd=spec.price_vnd * payload.months,
+    )
+    db.add(order)
+    await db.flush()
     await db.commit()
 
-    reference = f"CH{user.id[:6].upper()}{payload.plan[:2].upper()}{payload.months:02d}"
+    reference = order.id
     return PaymentIntentOut(
         plan=spec.plan.value,
         months=payload.months,
@@ -128,8 +138,8 @@ async def subscribe(
 
 @router.post("/confirm", response_model=SubscriptionOut)
 async def confirm_payment(
-    payload: SubscribeRequest,
-    user: User = Depends(get_current_user),
+    payload: ConfirmPaymentRequest,
+    admin: User = Depends(get_admin_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Kích hoạt gói sau khi thanh toán được xác nhận.
@@ -137,9 +147,28 @@ async def confirm_payment(
     Gia hạn cộng dồn vào hạn cũ nếu gói còn hiệu lực, để khách không mất
     những ngày đã trả tiền khi nâng cấp sớm.
     """
-    if payload.plan not in PLANS:
-        raise HTTPException(status_code=422, detail=f"Gói không tồn tại: {payload.plan}")
-    spec = get_plan(payload.plan)
+    order = await db.get(PaymentOrder, payload.order_id)
+    if order is None:
+        raise HTTPException(status_code=404, detail="Không tìm thấy yêu cầu thanh toán")
+    await db.execute(update(User).where(User.id == order.user_id).values(updated_at=User.updated_at))
+    await db.refresh(order)
+    user = await db.get(User, order.user_id, populate_existing=True)
+    if user is None or not user.is_active:
+        raise HTTPException(status_code=409, detail="Tài khoản không hoạt động")
+    if payload.amount_vnd != order.amount_vnd:
+        raise HTTPException(status_code=409, detail="Số tiền không khớp yêu cầu")
+    if order.status == "paid":
+        if order.transaction_reference != payload.transaction_reference:
+            raise HTTPException(status_code=409, detail="Order đã xác nhận bằng giao dịch khác")
+        return await get_subscription(db, user)
+    if order.status != "pending":
+        raise HTTPException(status_code=409, detail="Order không chờ thanh toán")
+    used = await db.scalar(select(PaymentOrder.id).where(
+        PaymentOrder.transaction_reference == payload.transaction_reference,
+    ))
+    if used:
+        raise HTTPException(status_code=409, detail="Giao dịch đã được sử dụng")
+    spec = get_plan(order.plan)
 
     subscription = await get_subscription(db, user)
     if subscription is None:
@@ -157,10 +186,18 @@ async def confirm_payment(
     subscription.ai_comments_enabled = spec.ai_comments_enabled
     subscription.bump_enabled = spec.bump_enabled
     subscription.started_at = subscription.started_at or now
-    subscription.expires_at = base + timedelta(days=30 * payload.months)
+    subscription.expires_at = base + timedelta(days=30 * order.months)
     subscription.payment_status = PaymentStatus.ACTIVE.value
 
     user.tier = spec.plan.value
-    await db.commit()
+    order.status = "paid"
+    order.transaction_reference = payload.transaction_reference
+    order.confirmed_by = admin.id
+    order.confirmed_at = now
+    try:
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(status_code=409, detail="Giao dịch đã được sử dụng") from None
     await db.refresh(subscription)
     return subscription

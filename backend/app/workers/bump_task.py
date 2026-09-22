@@ -5,40 +5,108 @@ Quy tắc chống lộ: mỗi khung giờ chỉ bump 1 lần, nội dung xoay v�
 trong danh sách khách soạn sẵn, và bump vẫn tính vào quota comment/ngày.
 """
 import random
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 from sqlalchemy import select
+from fastapi import HTTPException
 
 from app.database import get_session_factory
 from app.models.base import as_utc, utcnow
 from app.models.campaign import BumpSchedule, Campaign
 from app.models.enums import CommentStatus, PostStatus
 from app.models.post import CommentAction, DiscoveredPost
-from app.services.pipeline import compute_content_hash, count_today_actions
+from app.services.pipeline import compute_content_hash, count_today_actions, queue_comment
+from app.services.execution_policy import lock_user, require_entitlement
 from app.services.script_engine import ScriptError, render_spintax, validate_comment
 from app.workers.celery_app import celery_app, run_async
 
 LOCAL_TZ = ZoneInfo("Asia/Ho_Chi_Minh")
 
 
-def is_bump_due(bump: BumpSchedule, now: datetime | None = None) -> bool:
+def resolve_schedule_timezone(name: str | None) -> ZoneInfo:
+    """Resolve campaign timezone; invalid legacy data falls back safely."""
+    try:
+        return ZoneInfo(str(name or LOCAL_TZ.key))
+    except (TypeError, ValueError):
+        return LOCAL_TZ
+
+
+def bump_jitter_seconds(
+    bump_id: str,
+    date_key: str,
+    hour: int,
+    *,
+    enabled: bool = True,
+    min_minutes: int = 5,
+    max_minutes: int = 10,
+) -> int:
+    """Lệch mốc bump 5-10 phút, ổn định trong ngày đó (seed theo bump/ngày/giờ).
+
+    Đúng đầu giờ mỗi lần là hành vi máy móc dễ bị soi — hàm này dịch mốc kích
+    hoạt sớm/trễ một khoảng cố định trong ngày (không đổi giữa các lần Beat
+    kiểm tra lại) để tránh phát hiện lặp bằng cách đối chiếu timeline.
+    """
+    if not enabled:
+        return 0
+    from app.services.anti_ban import schedule_jitter_seconds
+
+    min_minutes = max(0, int(min_minutes))
+    max_minutes = max(min_minutes, int(max_minutes))
+
+    seeded_rng = random.Random(f"{bump_id}:{date_key}:{hour}")
+    return schedule_jitter_seconds(
+        seeded_rng, min_minutes=min_minutes, max_minutes=max_minutes
+    )
+
+
+def is_bump_due(
+    bump: BumpSchedule,
+    now: datetime | None = None,
+    *,
+    jitter_enabled: bool = True,
+    jitter_min_minutes: int = 5,
+    jitter_max_minutes: int = 10,
+    timezone_name: str = "Asia/Ho_Chi_Minh",
+) -> bool:
     """Đến giờ bump chưa? (hàm thuần — test offline được)
 
-    Đúng giờ trong `cron_schedule` và chưa bump trong CHÍNH giờ đó.
+    Mốc kích hoạt lệch 5-10 phút so với giờ tròn trong `cron_schedule` (xem
+    `bump_jitter_seconds`), và chưa bump trong CHÍNH khung giờ đó. Mỗi giờ
+    trong lịch được quy về lần xảy ra GẦN NHẤT so với `now` (trong vòng 12
+    giờ) — giờ đã qua xa trong ngày hoặc chưa tới không bị coi là "đến hạn".
     """
     if not bump.is_active or not bump.cron_schedule:
         return False
 
-    now = (now or datetime.now(timezone.utc)).astimezone(LOCAL_TZ)
-    if now.hour not in [int(h) for h in bump.cron_schedule]:
-        return False
-
+    schedule_tz = resolve_schedule_timezone(timezone_name)
+    now = (now or datetime.now(timezone.utc)).astimezone(schedule_tz)
     last = as_utc(bump.last_bumped_at)
-    if last is None:
-        return True
-    last_local = last.astimezone(LOCAL_TZ)
-    return (last_local.date(), last_local.hour) != (now.date(), now.hour)
+    last_local = last.astimezone(schedule_tz) if last is not None else None
+
+    for hour in (int(h) for h in bump.cron_schedule):
+        candidate = now.replace(hour=hour, minute=0, second=0, microsecond=0)
+        delta_hours = (now - candidate).total_seconds() / 3600
+        if delta_hours > 12:
+            candidate += timedelta(days=1)
+        elif delta_hours < -12:
+            candidate -= timedelta(days=1)
+
+        if last_local is not None and (last_local.date(), last_local.hour) == (candidate.date(), hour):
+            continue
+        target = candidate + timedelta(
+            seconds=bump_jitter_seconds(
+                bump.id,
+                candidate.date().isoformat(),
+                hour,
+                enabled=jitter_enabled,
+                min_minutes=jitter_min_minutes,
+                max_minutes=jitter_max_minutes,
+            )
+        )
+        if now >= target:
+            return True
+    return False
 
 
 def pick_message(bump: BumpSchedule, rng: random.Random | None = None) -> str:
@@ -57,12 +125,36 @@ def pick_message(bump: BumpSchedule, rng: random.Random | None = None) -> str:
 async def _bump_one(bump_id: str) -> dict:
     async with get_session_factory()() as db:
         bump = await db.get(BumpSchedule, bump_id)
-        if bump is None or not is_bump_due(bump):
+        if bump is None:
             return {"skipped": "not_due"}
 
         campaign = await db.get(Campaign, bump.campaign_id)
         if campaign is None or not campaign.is_active:
             return {"skipped": "campaign_inactive"}
+        if not is_bump_due(
+            bump,
+            jitter_enabled=campaign.bump_jitter_enabled,
+            jitter_min_minutes=campaign.bump_jitter_min_minutes,
+            jitter_max_minutes=campaign.bump_jitter_max_minutes,
+            timezone_name=campaign.schedule_timezone,
+        ):
+            return {"skipped": "not_due"}
+        await lock_user(db, campaign.user_id)
+        await db.refresh(bump)
+        if not is_bump_due(
+            bump,
+            jitter_enabled=campaign.bump_jitter_enabled,
+            jitter_min_minutes=campaign.bump_jitter_min_minutes,
+            jitter_max_minutes=campaign.bump_jitter_max_minutes,
+            timezone_name=campaign.schedule_timezone,
+        ):
+            return {"skipped": "not_due"}
+        try:
+            subscription = await require_entitlement(db, campaign.user_id, campaign)
+        except HTTPException:
+            return {"skipped": "policy_denied"}
+        if not subscription.bump_enabled:
+            return {"skipped": "bump_not_enabled"}
 
         used = await count_today_actions(db, campaign.id)
         if used >= int(campaign.max_comments_per_day or 20):
@@ -98,13 +190,9 @@ async def _bump_one(bump_id: str) -> dict:
             db.add(post)
             await db.flush()
 
-        db.add(
-            CommentAction(
-                discovered_post_id=post.id,
-                comment_content=message,
-                status=CommentStatus.QUEUED.value,
-                scheduled_at=utcnow(),
-            )
+        await queue_comment(
+            db, campaign, post, message,
+            idempotency_key=f"bump:{bump.id}:{utcnow().strftime('%Y%m%d%H')}",
         )
         bump.last_bumped_at = utcnow()
         await db.commit()
@@ -114,11 +202,21 @@ async def _bump_one(bump_id: str) -> dict:
 async def _due_bumps() -> list[str]:
     async with get_session_factory()() as db:
         result = await db.execute(
-            select(BumpSchedule)
+            select(BumpSchedule, Campaign)
             .join(Campaign, Campaign.id == BumpSchedule.campaign_id)
             .where(BumpSchedule.is_active.is_(True), Campaign.is_active.is_(True))
         )
-        return [b.id for b in result.scalars().all() if is_bump_due(b)]
+        return [
+            bump.id
+            for bump, campaign in result.all()
+            if is_bump_due(
+                bump,
+                jitter_enabled=campaign.bump_jitter_enabled,
+                jitter_min_minutes=campaign.bump_jitter_min_minutes,
+                jitter_max_minutes=campaign.bump_jitter_max_minutes,
+                timezone_name=campaign.schedule_timezone,
+            )
+        ]
 
 
 @celery_app.task(name="app.workers.bump_task.check_bump_schedules")
