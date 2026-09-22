@@ -56,6 +56,13 @@ export interface Campaign {
   max_comments_per_day: number;
   delay_min_seconds: number;
   delay_max_seconds: number;
+  publish_repeat_interval_days: number;
+  publish_auto_bump: boolean;
+  publish_bump_hours: number[];
+  schedule_timezone: string;
+  bump_jitter_enabled: boolean;
+  bump_jitter_min_minutes: number;
+  bump_jitter_max_minutes: number;
   created_at: string;
 }
 
@@ -168,12 +175,47 @@ export interface PostPublish {
   published_at: string | null;
   publish_results: PostPublishResult[];
   error_message: string | null;
+  repeat_interval_days?: number | null;
+  auto_bump?: boolean;
+  bump_hours?: number[];
+  created_at: string;
+}
+
+export interface PublishingMedia {
+  id: string;
+  original_filename: string;
+  content_type: string;
+  size_bytes: number;
+  reference: string;
   created_at: string;
 }
 
 export interface PostPublishList {
   items: PostPublish[];
   total: number;
+}
+
+export interface PostPublishHistory {
+  id: string;
+  post_publish_id: string | null;
+  campaign_id: string | null;
+  clone_account_id: string | null;
+  group_id: string;
+  group_name: string;
+  group_url: string;
+  post_url: string;
+  status: string;
+  error_message: string | null;
+  content_snapshot: string;
+  published_at: string | null;
+  created_at: string;
+}
+
+export interface PostPublishHistoryList {
+  items: PostPublishHistory[];
+  total: number;
+  limit: number;
+  offset: number;
 }
 
 export interface Post {
@@ -222,13 +264,59 @@ export interface MentionList {
   offset: number;
 }
 
+export interface Lead {
+  id: string;
+  campaign_id: string;
+  campaign_group_id: string | null;
+  fb_comment_id: string;
+  matched_keywords: string[];
+  author_fb_id: string;
+  author_name: string;
+  comment_text: string;
+  post_url: string;
+  comment_url: string;
+  status: "new" | "read" | "archived";
+  commented_at: string | null;
+  discovered_at: string;
+  seen_at: string | null;
+}
+
+export interface LeadList {
+  items: Lead[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
 export interface CommentAction {
   id: string;
   comment_content: string;
+  fb_comment_id: string;
+  comment_url: string;
   status: string;
   error_message: string | null;
   scheduled_at: string | null;
   executed_at: string | null;
+}
+
+export interface CommentHistory {
+  id: string;
+  discovered_post_id: string;
+  post_url: string;
+  comment_content: string;
+  fb_comment_id: string;
+  comment_url: string;
+  status: string;
+  error_message: string | null;
+  scheduled_at: string | null;
+  executed_at: string | null;
+}
+
+export interface CommentHistoryList {
+  items: CommentHistory[];
+  total: number;
+  limit: number;
+  offset: number;
 }
 
 export interface Bump {

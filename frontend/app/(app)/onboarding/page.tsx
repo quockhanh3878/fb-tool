@@ -39,6 +39,7 @@ import {
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { renderSpintax } from "@/lib/spintax";
+import { DEFAULT_COMMENT_TEXT } from "@/lib/defaults";
 
 interface IndustryPreset {
   id: string;
@@ -52,6 +53,17 @@ interface IndustryPreset {
 }
 
 const PRESETS: IndustryPreset[] = [
+  {
+    id: "writing_commission",
+    name: "Writing Commission (Nyatymita)",
+    campaignName: "Săn khách Writing Commission",
+    filterPrompt:
+      "Tìm bài viết tìm người viết commission, viết truyện, longfic, shortfic, chấp bút truyện, build plot hoặc tuyển writer.",
+    whitelist: "viết comm, commission, viết fic, longfic, shortfic, chấp bút, viết truyện, writer, plot, nsfw, sfw",
+    blacklist: "tuyển dụng thực tập, không lương, bẫy lừa đảo, ctv nạp tiền",
+    scriptName: "Mẫu CMT chào khách & gửi portfolio",
+    scriptTemplate: DEFAULT_COMMENT_TEXT,
+  },
   {
     id: "design_web",
     name: "Thiết kế đồ họa & Website",
@@ -116,7 +128,7 @@ export default function OnboardingPage() {
   );
 
   // Step 2: Tạo chiến dịch
-  const [selectedPreset, setSelectedPreset] = useState<string>("design_web");
+  const [selectedPreset, setSelectedPreset] = useState<string>("writing_commission");
   const [campaignName, setCampaignName] = useState(PRESETS[0].campaignName);
   const [aiPrompt, setAiPrompt] = useState(PRESETS[0].filterPrompt);
   const [whitelist, setWhitelist] = useState(PRESETS[0].whitelist);

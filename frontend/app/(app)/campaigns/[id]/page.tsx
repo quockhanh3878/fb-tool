@@ -39,6 +39,7 @@ import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { countVariants, similarity } from "@/lib/spintax";
 import type { Campaign, Script } from "@/lib/types";
+import { DEFAULT_COMMENT_TEXT, DEFAULT_BUMP_HOURS } from "@/lib/defaults";
 
 const TABS = [
   { key: "settings", label: "Cấu hình chung", Icon: IconSettings },
@@ -46,6 +47,8 @@ const TABS = [
   { key: "scripts", label: "Kịch bản comment", Icon: IconSparkles },
   { key: "bumps", label: "Lịch bump tự động", Icon: IconZap },
 ] as const;
+
+const PUBLISH_HOURS = Array.from({ length: 24 }, (_, hour) => hour);
 
 type TabKey = (typeof TABS)[number]["key"];
 
@@ -138,6 +141,15 @@ export default function CampaignDetailPage() {
 function SettingsTab({ campaign, onSaved }: { campaign: Campaign; onSaved: () => void }) {
   const [form, setForm] = useState({
     ...campaign,
+    publish_repeat_interval_days: campaign.publish_repeat_interval_days ?? 14,
+    publish_auto_bump: campaign.publish_auto_bump ?? true,
+    publish_bump_hours: campaign.publish_bump_hours?.length
+      ? campaign.publish_bump_hours
+      : DEFAULT_BUMP_HOURS,
+    schedule_timezone: campaign.schedule_timezone ?? "Asia/Ho_Chi_Minh",
+    bump_jitter_enabled: campaign.bump_jitter_enabled ?? true,
+    bump_jitter_min_minutes: campaign.bump_jitter_min_minutes ?? 5,
+    bump_jitter_max_minutes: campaign.bump_jitter_max_minutes ?? 10,
   });
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
@@ -165,6 +177,13 @@ function SettingsTab({ campaign, onSaved }: { campaign: Campaign; onSaved: () =>
         max_comments_per_day: Number(form.max_comments_per_day),
         delay_min_seconds: Number(form.delay_min_seconds),
         delay_max_seconds: Number(form.delay_max_seconds),
+        publish_repeat_interval_days: Number(form.publish_repeat_interval_days),
+        publish_auto_bump: Boolean(form.publish_auto_bump),
+        publish_bump_hours: form.publish_bump_hours,
+        schedule_timezone: form.schedule_timezone,
+        bump_jitter_enabled: Boolean(form.bump_jitter_enabled),
+        bump_jitter_min_minutes: Number(form.bump_jitter_min_minutes),
+        bump_jitter_max_minutes: Number(form.bump_jitter_max_minutes),
       });
       setMessage("Đã lưu.");
       onSaved();
@@ -318,6 +337,97 @@ function SettingsTab({ campaign, onSaved }: { campaign: Campaign; onSaved: () =>
             onChange={set("delay_max_seconds")}
           />
         </Field>
+      </div>
+
+      <div className="mt-4 rounded-xl border border-indigo-200/80 bg-indigo-50/50 p-4 dark:border-indigo-900/70 dark:bg-indigo-950/20">
+        <div className="mb-3">
+          <h3 className="text-sm font-semibold text-slate-900 dark:text-white">Lịch đăng bài và auto-bump</h3>
+          <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
+            Đây là giá trị mặc định cho các bài mới. Từng bài vẫn có thể ghi đè khi lập lịch.
+          </p>
+        </div>
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <Field label="Lặp lại sau (ngày)" hint="Nhập 1–365 ngày.">
+            <Input
+              type="number"
+              min={1}
+              max={365}
+              value={form.publish_repeat_interval_days}
+              onChange={set("publish_repeat_interval_days")}
+            />
+          </Field>
+          <Field label="Múi giờ lịch">
+            <Input value={form.schedule_timezone} onChange={set("schedule_timezone")} />
+          </Field>
+          <Field label="Jitter tối thiểu (phút)">
+            <Input
+              type="number"
+              min={0}
+              max={120}
+              value={form.bump_jitter_min_minutes}
+              onChange={set("bump_jitter_min_minutes")}
+            />
+          </Field>
+          <Field label="Jitter tối đa (phút)">
+            <Input
+              type="number"
+              min={0}
+              max={120}
+              value={form.bump_jitter_max_minutes}
+              onChange={set("bump_jitter_max_minutes")}
+            />
+          </Field>
+        </div>
+        <div className="mt-4 flex flex-wrap items-center gap-3">
+          <label className="inline-flex items-center gap-2 text-sm text-slate-700 dark:text-slate-300">
+            <input
+              type="checkbox"
+              className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+              checked={Boolean(form.publish_auto_bump)}
+              onChange={(e) => setForm({ ...form, publish_auto_bump: e.target.checked })}
+            />
+            Bật auto-bump mặc định
+          </label>
+          <label className="inline-flex items-center gap-2 text-sm text-slate-700 dark:text-slate-300">
+            <input
+              type="checkbox"
+              className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+              checked={Boolean(form.bump_jitter_enabled)}
+              onChange={(e) => setForm({ ...form, bump_jitter_enabled: e.target.checked })}
+            />
+            Dịch giờ ngẫu nhiên trong khoảng jitter
+          </label>
+        </div>
+        <div className="mt-3">
+          <p className="mb-2 text-xs font-semibold text-slate-700 dark:text-slate-300">Các giờ bump</p>
+          <div className="flex flex-wrap gap-1">
+            {PUBLISH_HOURS.map((hour) => {
+              const picked = form.publish_bump_hours.includes(hour);
+              return (
+                <button
+                  key={hour}
+                  type="button"
+                  onClick={() =>
+                    setForm({
+                      ...form,
+                      publish_bump_hours: picked
+                        ? form.publish_bump_hours.filter((item) => item !== hour)
+                        : [...form.publish_bump_hours, hour].sort((a, b) => a - b),
+                    })
+                  }
+                  className={cx(
+                    "w-10 rounded-lg border py-1 text-xs tabular-nums transition",
+                    picked
+                      ? "border-slate-900 bg-slate-900 text-white dark:border-slate-100 dark:bg-slate-100 dark:text-slate-900"
+                      : "border-slate-300 text-slate-600 hover:bg-slate-100 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800",
+                  )}
+                >
+                  {hour}h
+                </button>
+              );
+            })}
+          </div>
+        </div>
       </div>
     </Card>
   );
@@ -551,9 +661,9 @@ function ScriptsTab({ campaign }: { campaign: Campaign }) {
     setEditing(null);
     setFormError("");
     setForm({
-      name: "",
+      name: data?.length ? "" : "Mẫu CMT chào khách & gửi portfolio",
       type: "spintax",
-      template_content: "",
+      template_content: data?.length ? "" : DEFAULT_COMMENT_TEXT,
       ai_system_prompt: "",
       is_default: !data?.length, // kịch bản đầu tiên mặc định là cái chính
       is_active: true,
@@ -775,12 +885,30 @@ function ScriptsTab({ campaign }: { campaign: Campaign }) {
         </div>
 
         {form.type === "spintax" ? (
-          <SpintaxEditor
-            campaignId={campaignId}
-            value={form.template_content}
-            maxCommentsPerDay={campaign.max_comments_per_day}
-            onChange={(template_content) => setForm({ ...form, template_content })}
-          />
+          <>
+            <div className="flex justify-end -mb-2">
+              <button
+                type="button"
+                onClick={() =>
+                  setForm({
+                    ...form,
+                    name: form.name || "Mẫu CMT chào khách & gửi portfolio",
+                    template_content: DEFAULT_COMMENT_TEXT,
+                  })
+                }
+                className="inline-flex items-center gap-1 text-xs text-indigo-600 hover:underline dark:text-indigo-400 font-medium cursor-pointer"
+              >
+                <IconSparkles size={13} />
+                <span>Nạp mẫu CMT mặc định (Nyatymita)</span>
+              </button>
+            </div>
+            <SpintaxEditor
+              campaignId={campaignId}
+              value={form.template_content}
+              maxCommentsPerDay={campaign.max_comments_per_day}
+              onChange={(template_content) => setForm({ ...form, template_content })}
+            />
+          </>
         ) : (
           <Field
             label="Chỉ dẫn cho AI"
@@ -826,8 +954,8 @@ function BumpsTab({ campaignId }: { campaignId: string }) {
   const { data, loading, error, reload } = useAsync(() => api.bumps(campaignId), [campaignId]);
   const [form, setForm] = useState({
     target_post_url: "",
-    hours: [8, 12, 20] as number[],
-    messages: [] as string[],
+    hours: DEFAULT_BUMP_HOURS as number[],
+    messages: [DEFAULT_COMMENT_TEXT] as string[],
   });
   const [formError, setFormError] = useState("");
   const bumpAllowed = user?.subscription?.bump_enabled ?? false;
@@ -840,7 +968,7 @@ function BumpsTab({ campaignId }: { campaignId: string }) {
         cron_schedule: form.hours,
         bump_messages: form.messages,
       });
-      setForm({ target_post_url: "", hours: [8, 12, 20], messages: [] });
+      setForm({ target_post_url: "", hours: DEFAULT_BUMP_HOURS, messages: [DEFAULT_COMMENT_TEXT] });
       reload();
     } catch (err) {
       setFormError(err instanceof Error ? err.message : "Không tạo được lịch bump");

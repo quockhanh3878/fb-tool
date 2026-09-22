@@ -16,6 +16,7 @@ import type {
   CloneDiagnosis,
   CloneHealth,
   CommentAction,
+  CommentHistoryList,
   CookieUploadResult,
   DashboardStats,
   ExpandResult,
@@ -25,6 +26,7 @@ import type {
   HealthSummary,
   IngestResult,
   LintReport,
+  LeadList,
   Mention,
   MentionList,
   PaymentIntent,
@@ -33,6 +35,8 @@ import type {
   PostList,
   PostPublish,
   PostPublishList,
+  PostPublishHistoryList,
+  PublishingMedia,
   Proxy,
   Script,
   ScriptPreview,
@@ -301,6 +305,9 @@ export const api = {
   publishingPosts: (
     params: { campaign_id?: string; status?: string; limit?: number; offset?: number } = {},
   ) => request<PostPublishList>(`/api/publishing${qs(params)}`),
+  publishingHistory: (
+    params: { campaign_id?: string; status?: string; limit?: number; offset?: number } = {},
+  ) => request<PostPublishHistoryList>(`/api/publishing/history${qs(params)}`),
   publishingPost: (id: string) => request<PostPublish>(`/api/publishing/${id}`),
   createPublishingPost: (payload: {
     campaign_id?: string | null;
@@ -309,8 +316,16 @@ export const api = {
     content_template: string;
     media_urls?: string[];
     target_groups: Array<{ group_id: string; group_name: string; group_url?: string }>;
+    repeat_interval_days?: number | null;
+    auto_bump?: boolean;
+    bump_hours?: number[];
     scheduled_at?: string | null;
   }) => request<PostPublish>("/api/publishing", { method: "POST", body: payload }),
+  uploadPublishingMedia: (file: File) => {
+    const form = new FormData();
+    form.append("file", file);
+    return request<PublishingMedia>("/api/publishing/media", { method: "POST", form });
+  },
   publishPostNow: (id: string) =>
     request<PostPublish>(`/api/publishing/${id}/publish-now`, { method: "POST" }),
   deletePublishingPost: (id: string) =>
@@ -331,6 +346,14 @@ export const api = {
   queue: () => request<CommentAction[]>("/api/queue"),
   cancelQueued: (actionId: string) =>
     request<CommentAction>(`/api/queue/${actionId}/cancel`, { method: "POST" }),
+  commentHistory: (params: { status?: string; limit?: number; offset?: number } = {}) =>
+    request<CommentHistoryList>(`/api/comment-history${qs(params)}`),
+
+  leads: (params: { campaign_id?: string; status?: string; limit?: number; offset?: number } = {}) =>
+    request<LeadList>(`/api/leads${qs(params)}`),
+  leadsUnread: () => request<{ count: number }>("/api/leads/unread-count"),
+  markLeadRead: (id: string) => request<unknown>(`/api/leads/${id}/read`, { method: "POST" }),
+  archiveLead: (id: string) => request<unknown>(`/api/leads/${id}/archive`, { method: "POST" }),
 
   // ── Bump ───────────────────────────────────────────────────────────────
   bumps: (campaignId: string) => request<Bump[]>(`/api/campaigns/${campaignId}/bumps`),

@@ -32,8 +32,9 @@ import {
 } from "@/components/ui";
 import { api } from "@/lib/api";
 import { countVariants, renderSpintax, similarity } from "@/lib/spintax";
-import type { Post } from "@/lib/types";
+import type { CommentHistory, Post } from "@/lib/types";
 import { PublishingStudio } from "@/components/PublishingStudio";
+import { DEFAULT_COMMENT_TEXT } from "@/lib/defaults";
 
 const STATUSES = [
   { value: "", label: "Tất cả trạng thái" },
@@ -67,6 +68,7 @@ export default function PostsPage() {
   );
 
   const queue = useAsync(() => api.queue());
+  const commentHistory = useAsync(() => api.commentHistory({ limit: 30 }), []);
 
   async function skipPost(post: Post) {
     try {
@@ -378,6 +380,8 @@ export default function PostsPage() {
         </Card>
       )}
 
+      <CommentHistoryCard items={commentHistory.data?.items ?? []} error={commentHistory.error} loading={commentHistory.loading} />
+
       {/* ── APPLY MODAL ────────────────────────────────────────────────── */}
       <ApplyModal
         post={selected}
@@ -396,6 +400,46 @@ export default function PostsPage() {
   );
 }
 
+function CommentHistoryCard({
+  items,
+  error,
+  loading,
+}: {
+  items: CommentHistory[];
+  error: string | null;
+  loading: boolean;
+}) {
+  return (
+    <Card title="Lịch sử comment đã xử lý">
+      <ErrorNote>{error}</ErrorNote>
+      {loading && <Spinner label="Đang tải lịch sử comment…" />}
+      {!loading && !items.length && (
+        <p className="text-xs text-slate-500 dark:text-slate-400">Chưa có lượt comment nào được lưu.</p>
+      )}
+      {!!items.length && (
+        <div className="space-y-2">
+          {items.map((item) => (
+            <div key={item.id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-100 bg-slate-50/60 p-3 text-xs dark:border-slate-800 dark:bg-slate-800/40">
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <Badge value={item.status} />
+                  <span className="truncate font-medium text-slate-800 dark:text-slate-200">{item.comment_content}</span>
+                </div>
+                <div className="mt-1 text-[11px] text-slate-400">Xử lý lúc: {fmtDate(item.executed_at || item.scheduled_at)}</div>
+                {item.error_message && <div className="mt-1 text-rose-500">{item.error_message}</div>}
+              </div>
+              <div className="flex shrink-0 gap-2">
+                {item.post_url && <a href={item.post_url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-slate-600 hover:underline dark:text-slate-300">Bài gốc <IconExternalLink size={12} /></a>}
+                {item.comment_url && <a href={item.comment_url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-indigo-600 hover:underline dark:text-indigo-400">Comment <IconExternalLink size={12} /></a>}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </Card>
+  );
+}
+
 function ApplyModal({
   post,
   recentComments,
@@ -407,7 +451,7 @@ function ApplyModal({
   onClose: () => void;
   onDone: () => void;
 }) {
-  const [text, setText] = useState("");
+  const [text, setText] = useState(DEFAULT_COMMENT_TEXT);
   const [cloneId, setCloneId] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -446,7 +490,7 @@ function ApplyModal({
         comment_text: text.trim() || undefined,
         clone_id: cloneId || undefined,
       });
-      setText("");
+      setText(DEFAULT_COMMENT_TEXT);
       onDone();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Không đưa được vào hàng đợi");
@@ -483,29 +527,45 @@ function ApplyModal({
 
         <ErrorNote>{error}</ErrorNote>
 
-        {!!usableScripts.length && (
-          <div>
-            <span className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-2">
-              Lấy nhanh từ kịch bản đã soạn:
+        <div>
+          <div className="flex items-center justify-between mb-2">
+            <span className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
+              Lấy nhanh kịch bản ứng tuyển:
             </span>
-            <div className="flex flex-wrap gap-2">
-              {usableScripts.map((script) => (
-                <button
-                  key={script.id}
-                  type="button"
-                  onClick={() => pullFromScript(script.template_content)}
-                  className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200/90 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-700 hover:border-indigo-400 hover:bg-indigo-50/50 hover:text-indigo-700 transition-all dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
-                >
-                  <IconSparkles size={13} className="text-indigo-500" />
-                  {script.name}
-                  <span className="text-[10px] text-slate-400">
-                    ({countVariants(script.template_content)} biến thể)
-                  </span>
-                </button>
-              ))}
-            </div>
+            <button
+              type="button"
+              onClick={() => setText(DEFAULT_COMMENT_TEXT)}
+              className="inline-flex items-center gap-1 text-[11px] text-indigo-600 hover:underline dark:text-indigo-400 font-medium cursor-pointer"
+            >
+              <IconSparkles size={12} />
+              <span>Nạp lại mẫu mặc định</span>
+            </button>
           </div>
-        )}
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => setText(DEFAULT_COMMENT_TEXT)}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-indigo-200 bg-indigo-50/70 px-2.5 py-1.5 text-xs font-semibold text-indigo-700 hover:bg-indigo-100 transition-all dark:border-indigo-800 dark:bg-indigo-950/50 dark:text-indigo-300 dark:hover:bg-indigo-900/60 cursor-pointer"
+            >
+              <IconSparkles size={13} className="text-indigo-500" />
+              Mẫu CMT Nyatymita (Mặc định)
+            </button>
+            {usableScripts.map((script) => (
+              <button
+                key={script.id}
+                type="button"
+                onClick={() => pullFromScript(script.template_content)}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200/90 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-700 hover:border-indigo-400 hover:bg-indigo-50/50 hover:text-indigo-700 transition-all dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700 cursor-pointer"
+              >
+                <IconSparkles size={13} className="text-indigo-500" />
+                {script.name}
+                <span className="text-[10px] text-slate-400">
+                  ({countVariants(script.template_content)} biến thể)
+                </span>
+              </button>
+            ))}
+          </div>
+        </div>
 
         <Field
           label="Nội dung bình luận ứng tuyển"
