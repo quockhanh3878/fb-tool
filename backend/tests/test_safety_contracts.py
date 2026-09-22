@@ -169,6 +169,32 @@ def test_queue_failure_does_not_stop_worker():
     asyncio.run(scenario())
 
 
+def test_queue_timeout_releases_key_and_runs_next_job():
+    async def scenario():
+        queue = SerialJobQueue(default_timeout_seconds=0.01)
+        calls = []
+        never = asyncio.Event()
+
+        async def stuck_job():
+            await never.wait()
+
+        async def next_job():
+            calls.append("next")
+
+        queue.start()
+        assert await queue.enqueue(stuck_job, key="stuck")
+        assert await queue.enqueue(next_job, key="next")
+        await asyncio.wait_for(queue._queue.join(), 1)
+        metrics = queue.readiness()
+        await queue.stop()
+        assert calls == ["next"]
+        assert not queue._pending
+        assert metrics["last_error_kind"] == "timeout"
+        assert metrics["last_error_key"] == "stuck"
+
+    asyncio.run(scenario())
+
+
 @pytest.mark.parametrize("headers,chunks,expected", [
     ([(b"content-length", b"99")], [], 413),
     ([], [b"1234", b"5678"], 413),

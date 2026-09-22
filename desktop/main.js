@@ -17,6 +17,7 @@ const { spawn, exec } = require("node:child_process");
 const fs = require("node:fs");
 const path = require("node:path");
 const crypto = require("node:crypto");
+const { SidecarSupervisor } = require("./supervisor");
 
 const REPO_ROOT = path.join(__dirname, "..");
 const IS_PACKAGED = app.isPackaged;
@@ -26,8 +27,7 @@ const FRONTEND_PORT = 3100;
 const HEALTH_TIMEOUT_MS = 30000;
 const HEALTH_POLL_MS = 500;
 
-let backendProc = null;
-let frontendProc = null;
+let sidecarSupervisor = null;
 let mainWindow = null;
 let splashWindow = null;
 let appLogPath = null;
@@ -98,18 +98,13 @@ function showSplash() {
   );
 }
 
-async function waitForHealth(url, timeoutMs) {
-  const start = Date.now();
-  while (Date.now() - start < timeoutMs) {
-    try {
-      const res = await fetch(url, { signal: AbortSignal.timeout(1000) });
-      if (res.ok) return true;
-    } catch (_err) {
-      // Chua san sang — thu lai.
-    }
-    await new Promise((r) => setTimeout(r, HEALTH_POLL_MS));
+async function probeUrl(url) {
+  try {
+    const res = await fetch(url, { signal: AbortSignal.timeout(1000) });
+    return res.ok;
+  } catch (_err) {
+    return false;
   }
-  return false;
 }
 
 function killProcessTree(proc) {
@@ -224,35 +219,54 @@ async function boot() {
   logLine(`Khoi dong CommHunter AI desktop (userData=${root})`);
   showSplash();
 
-  backendProc = startBackend(logDir, dataDir, root);
-  logLine(`Backend spawn xong (pid=${backendProc.pid}), cho health check...`);
-  const backendOk = await waitForHealth(`http://127.0.0.1:${BACKEND_PORT}/health`, HEALTH_TIMEOUT_MS);
-  if (!backendOk) {
-    logLine(`Backend khong phan hoi sau ${HEALTH_TIMEOUT_MS / 1000}s — huy khoi dong.`);
-    dialog.showErrorBox(
-      "Khong khoi dong duoc",
-      `Backend khong phan hoi sau ${HEALTH_TIMEOUT_MS / 1000}s.\n` +
-        `Xem log: ${path.join(logDir, "backend.log")}`
-    );
-    app.quit();
-    return;
-  }
-  logLine("Backend san sang.");
+  sidecarSupervisor = new SidecarSupervisor({
+    services: {
+      backend: {
+        start: () => {
+          const child = startBackend(logDir, dataDir, root);
+          logLine(`Backend spawn xong (pid=${child.pid}), cho /ready...`);
+          return child;
+        },
+      },
+      frontend: {
+        start: () => {
+          const child = startFrontend(logDir);
+          logLine(`Frontend spawn xong (pid=${child.pid}), cho probe...`);
+          return child;
+        },
+      },
+    },
+    probe: (name) => name === "backend"
+      ? probeUrl(`http://127.0.0.1:${BACKEND_PORT}/ready`)
+      : probeUrl(`http://127.0.0.1:${FRONTEND_PORT}`),
+    stopChild: (child) => killProcessTree(child),
+    probeIntervalMs: HEALTH_POLL_MS,
+    startupTimeoutMs: HEALTH_TIMEOUT_MS,
+    log: (message) => logLine(`Watchdog: ${message}`),
+    onFailure: ({ name, reason }) => {
+      logLine(`Watchdog dung tu phuc hoi ${name}: ${reason}`);
+      dialog.showErrorBox(
+        "Sidecar khong the tu phuc hoi",
+        `${name} khong san sang sau nhieu lan thu.\n` +
+          `Xem log: ${path.join(logDir, `${name}.log`)}\n` +
+          "Hay khoi dong lai ung dung sau khi xu ly log."
+      );
+      app.quit();
+    },
+  });
 
-  frontendProc = startFrontend(logDir);
-  logLine(`Frontend spawn xong (pid=${frontendProc.pid}), cho health check...`);
-  const frontendOk = await waitForHealth(`http://127.0.0.1:${FRONTEND_PORT}`, HEALTH_TIMEOUT_MS);
-  if (!frontendOk) {
-    logLine(`Frontend khong phan hoi sau ${HEALTH_TIMEOUT_MS / 1000}s — huy khoi dong.`);
+  try {
+    await sidecarSupervisor.start();
+  } catch (error) {
+    logLine(`Khong khoi dong duoc sidecar: ${error.message}`);
     dialog.showErrorBox(
       "Khong khoi dong duoc",
-      `Dashboard khong phan hoi sau ${HEALTH_TIMEOUT_MS / 1000}s.\n` +
-        `Xem log: ${path.join(logDir, "frontend.log")}`
+      `${error.message}.\nXem log trong ${logDir}.`
     );
     app.quit();
     return;
   }
-  logLine("Frontend san sang, mo cua so chinh.");
+  logLine("Backend va frontend san sang, mo cua so chinh.");
 
   mainWindow = new BrowserWindow({ width: 1280, height: 800 });
   await mainWindow.loadURL(`http://127.0.0.1:${FRONTEND_PORT}`);
@@ -271,8 +285,7 @@ app.on("window-all-closed", () => {
 
 app.on("before-quit", () => {
   logLine("Dang don dep tien trinh sidecar truoc khi thoat.");
-  killProcessTree(backendProc);
-  killProcessTree(frontendProc);
+  sidecarSupervisor?.stop();
   killByPort(BACKEND_PORT);
   killByPort(FRONTEND_PORT);
 });

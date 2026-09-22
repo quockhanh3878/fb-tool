@@ -113,18 +113,31 @@ def create_app() -> FastAPI:
 
     @app.get("/ready", tags=["system"])
     async def readiness():
+        scheduler_state = None
         try:
             async with get_session_factory()() as db:
                 if not await schema_ready(db):
                     raise RuntimeError("Schema not ready")
+            if settings.run_mode == "desktop":
+                from app.workers.scheduler import readiness_snapshot
+
+                scheduler_state = readiness_snapshot()
+                if scheduler_state["status"] != "ready":
+                    raise RuntimeError("Desktop scheduler is not ready")
             if settings.run_mode == "saas" and settings.app_env != "test":
                 from redis.asyncio import Redis
 
                 async with Redis.from_url(settings.redis_url, socket_connect_timeout=2, socket_timeout=2) as redis:
                     await redis.ping()
         except Exception:
-            return JSONResponse({"status": "not_ready"}, status_code=503)
-        return {"status": "ready"}
+            body = {"status": "not_ready"}
+            if scheduler_state is not None:
+                body["scheduler"] = scheduler_state
+            return JSONResponse(body, status_code=503)
+        body = {"status": "ready"}
+        if scheduler_state is not None:
+            body["scheduler"] = scheduler_state
+        return body
 
     return app
 

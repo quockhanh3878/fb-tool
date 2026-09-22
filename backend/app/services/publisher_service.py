@@ -162,6 +162,15 @@ async def execute_publish(db: AsyncSession, publish_id: str) -> dict:
         post_pub.lease_expires_at = None
         await db.commit()
         return {"deferred": "clone_busy"}
+    except asyncio.CancelledError:
+        await db.rollback()
+        interrupted = await db.get(PostPublish, publish_id, populate_existing=True)
+        if interrupted is not None and interrupted.status == PublishStatus.PUBLISHING.value:
+            interrupted.status = PublishStatus.UNKNOWN_OUTCOME.value
+            interrupted.lease_expires_at = None
+            interrupted.error_message = "Worker cancelled; review before retry"
+            await db.commit()
+        raise
     except Exception:
         await db.rollback()
         post_pub = await db.get(PostPublish, publish_id, populate_existing=True)

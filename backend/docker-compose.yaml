@@ -79,6 +79,9 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+    # /ready gates dependencies; Compose does not restart a hung process merely
+    # because this healthcheck becomes unhealthy. Use an external supervisor
+    # for liveness restarts in production.
     healthcheck:
       test: ["CMD-SHELL", "curl -fsS http://localhost:8000/ready || exit 1"]
       interval: 15s

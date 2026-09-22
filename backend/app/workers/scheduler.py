@@ -16,6 +16,7 @@ import logging
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 
+from app.config import get_settings
 from app.workers.job_queue import job_queue
 
 logger = logging.getLogger("commhunter.scheduler")
@@ -88,6 +89,7 @@ async def _dispatch_maintenance() -> None:
 
 def start_scheduler() -> None:
     """Goi 1 lan trong lifespan khi RUN_MODE=desktop."""
+    job_queue.set_default_timeout(get_settings().browser_operation_timeout_seconds)
     job_queue.start()
     scheduler.add_job(_dispatch_scout, "interval", seconds=60, id="scout-scan-all")
     scheduler.add_job(_dispatch_shooter, "interval", seconds=30, id="shooter-process-queue")
@@ -107,6 +109,15 @@ def start_scheduler() -> None:
     scheduler.start()
     scheduler.add_job(_dispatch_maintenance, "interval", seconds=30, id="durable-maintenance", max_instances=1)
     logger.info("Scheduler desktop da khoi dong: 7 job dang ky")
+
+
+def readiness_snapshot() -> dict[str, object]:
+    snapshot = job_queue.readiness()
+    scheduler_running = bool(scheduler.running)
+    snapshot["scheduler_running"] = scheduler_running
+    if not scheduler_running:
+        snapshot["status"] = "not_ready"
+    return snapshot
 
 
 async def stop_scheduler() -> None:

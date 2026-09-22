@@ -207,6 +207,72 @@ def test_worker_executes_once_and_releases_clone(application, monkeypatch):
     exercise(scenario)
 
 
+def test_cancelled_browser_jobs_become_unknown_outcome(application, monkeypatch):
+    async def scenario():
+        from app.services import publisher_service
+        from app.workers import shooter_task
+
+        data = await seed()
+        started = asyncio.Event()
+        never = asyncio.Event()
+
+        async def blocked_browser(*args):
+            started.set()
+            await never.wait()
+
+        monkeypatch.setattr(shooter_task, "decrypt_cookies", lambda _value: {})
+        monkeypatch.setattr(shooter_task, "post_comment_real", blocked_browser)
+        async with get_session_factory()() as db:
+            action = CommentAction(
+                discovered_post_id=data.post,
+                clone_account_id=data.clone,
+                status="queued",
+                scheduled_at=utcnow(),
+                comment_content="Synthetic cancelled comment",
+            )
+            db.add(action)
+            await db.commit()
+            action_id = action.id
+
+        task = asyncio.create_task(shooter_task._execute(action_id))
+        await asyncio.wait_for(started.wait(), 1)
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+        async with get_session_factory()() as db:
+            assert (await db.get(CommentAction, action_id)).status == "unknown_outcome"
+
+        started.clear()
+        monkeypatch.setattr(publisher_service, "_publish_claimed", blocked_browser)
+        async with get_session_factory()() as db:
+            publish = PostPublish(
+                user_id=data.owner,
+                campaign_id=data.campaign,
+                clone_account_id=data.clone,
+                content_template="Synthetic cancelled publish",
+                target_groups=[{"group_url": "https://www.facebook.com/groups/synthetic"}],
+                status="scheduled",
+                scheduled_at=utcnow(),
+            )
+            db.add(publish)
+            await db.commit()
+            publish_id = publish.id
+
+        async def run_publish():
+            async with get_session_factory()() as db:
+                return await publisher_service.execute_publish(db, publish_id)
+
+        task = asyncio.create_task(run_publish())
+        await asyncio.wait_for(started.wait(), 1)
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+        async with get_session_factory()() as db:
+            assert (await db.get(PostPublish, publish_id)).status == "unknown_outcome"
+
+    exercise(scenario)
+
+
 def test_recovery_does_not_blindly_requeue_browser_side_effects(application):
     async def scenario():
         from app.workers.maintenance_task import recover_stale_jobs

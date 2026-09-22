@@ -1,4 +1,5 @@
 """Durable comment admission, clone exclusion and conservative recovery."""
+import asyncio
 from datetime import datetime, timedelta, timezone
 
 from fastapi import HTTPException
@@ -130,6 +131,15 @@ async def _execute(action_id: str) -> dict:
                 return await _run_claimed(db, action, post, campaign, clone)
         except LeaseBusy:
             return await _defer(db, action, "clone_busy")
+        except asyncio.CancelledError:
+            await db.rollback()
+            interrupted = await db.get(CommentAction, action_id, populate_existing=True)
+            if interrupted is not None and interrupted.status == CommentStatus.IN_PROGRESS.value:
+                interrupted.status = CommentStatus.UNKNOWN_OUTCOME.value
+                interrupted.lease_expires_at = None
+                interrupted.error_message = "Worker cancelled; review before retry"
+                await db.commit()
+            raise
 
 
 async def _run_claimed(db, action, post, campaign, clone):
