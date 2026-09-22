@@ -2,6 +2,8 @@
 
 Dự án phát triển nền tảng tự động hóa tìm kiếm khách hàng, giám sát hội nhóm Facebook, lọc bài viết tiềm năng và tự động tương tác/ứng tuyển theo kịch bản thông minh bằng AI.
 
+> Ghi chú sử dụng hiện tại cho anh Ber: [bản local/desktop đang dùng](docs/plans/current_use_note.md).
+
 ---
 
 ## Mục lục Tài liệu dự án
@@ -174,7 +176,7 @@ cd backend
 $env:DATABASE_URL = "sqlite+aiosqlite:///./data/commhunter_api.db"
 ..\.venv\Scripts\alembic.exe upgrade head
 ..\.venv\Scripts\uvicorn.exe app.main:app --reload   # http://localhost:8000/docs
-..\.venv\Scripts\python.exe tests\test_api.py        # 348/348 PASS, offline
+..\.venv\Scripts\python.exe tests\test_api.py        # 396/396 PASS, offline
 
 cd ..\frontend
 npm install; npm run dev                             # http://localhost:3000
@@ -203,7 +205,7 @@ Chi tiết thiết kế: [DELIVERY_STATUS §4b](docs/plans/DELIVERY_STATUS.md).
 | Bộ test | Phạm vi | Kết quả |
 |---|---|---|
 | `commhunter/tests/test_pipeline.py` | Phase 1: pipeline CLI, anti-ban, hồi quy nợ kỹ thuật | **116/116 PASS** |
-| `backend/tests/test_api.py` | Phase 2-4: 68 path / 86 operation, cách ly đa khách, quota, máy trạng thái, worker, xoay vòng & chống trùng, đăng bài thật (E2E backend trên burner), preflight nick, hộp thư Nhắc tới, giãn cách comment, SerialJobQueue + Telegram polling chế độ desktop | **348/348 PASS** |
+| `backend/tests/test_api.py` | Phase 2-4: cách ly đa khách, quota, máy trạng thái, worker, xoay vòng & chống trùng, đăng bài thật (E2E backend trên burner), preflight nick, hộp thư Nhắc tới, săn lead qua comment, lệch giờ hành động chống máy móc, giãn cách comment, SerialJobQueue + Telegram polling chế độ desktop | **396/396 PASS** |
 | `commhunter/tests/test_templates.py` | Kho mẫu comment, chống lặp lời | **8/8 PASS** |
 | `commhunter/tests/test_browser.py` | Vân tay + cấu hình trình duyệt | **23/23 PASS** |
 | `npx next build` (frontend) | 15 route, TypeScript strict | **0 lỗi** |
