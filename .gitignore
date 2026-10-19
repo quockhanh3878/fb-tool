@@ -43,6 +43,12 @@ chrome-debug-profile/
 # Dữ liệu runtime của backend (DB SQLite, file tạm).
 backend/data/
 
+# Snapshot audit và tài sản local ở root, không phải mã nguồn chạy thật.
+/App/
+/data/
+/*.xlsx
+/Ảnh PR comm cá nhân/
+
 # ─── Runtime artifacts ─────────────────────────────────────────────────────
 *.db
 *.db-wal

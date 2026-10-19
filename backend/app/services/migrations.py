@@ -8,7 +8,7 @@ from sqlalchemy import inspect, text
 from app.config import get_settings
 from app.database import get_engine
 
-SCHEMA_VERSION = "0013"
+SCHEMA_VERSION = "0017"
 
 
 async def migrate_database():

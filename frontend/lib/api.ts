@@ -25,10 +25,12 @@ import type {
   HealthEvent,
   HealthSummary,
   IngestResult,
+  JobStatus,
   LintReport,
   LeadList,
   Mention,
   MentionList,
+  NotificationRecipient,
   PaymentIntent,
   PlanSpec,
   Post,
@@ -402,6 +404,19 @@ export const api = {
 
   // ── Cài đặt (chỉ chế độ desktop) ────────────────────────────────────────
   appSettings: () => request<AppSettings>("/api/settings"),
-  updateAppSettings: (payload: { openai_api_key?: string; telegram_bot_token?: string }) =>
+  updateAppSettings: (payload: { openai_api_key?: string; telegram_bot_token?: string; discord_webhook_url?: string; discord_bot_token?: string }) =>
     request<AppSettings>("/api/settings", { method: "PUT", body: payload }),
+  discordRecipients: () => request<NotificationRecipient[]>("/api/settings/discord-recipients"),
+  createDiscordLinkCode: () =>
+    request<{ code: string; expires_at: string }>("/api/settings/discord-link-code", { method: "POST" }),
+  sendDiscordTest: () => request<{ sent: boolean; status?: number }>("/api/settings/discord-test", { method: "POST" }),
+  createDiscordRecipient: (payload: { channel: "discord_webhook" | "discord_dm"; recipient_id: string; display_name?: string; event_types?: string[] }) =>
+    request<NotificationRecipient>("/api/settings/discord-recipients", { method: "POST", body: payload }),
+  updateDiscordRecipient: (id: string, payload: Partial<NotificationRecipient>) =>
+    request<NotificationRecipient>(`/api/settings/discord-recipients/${id}`, { method: "PATCH", body: payload }),
+  deleteDiscordRecipient: (id: string) =>
+    request<void>(`/api/settings/discord-recipients/${id}`, { method: "DELETE" }),
+  jobs: () => request<JobStatus[]>("/api/jobs"),
+  pauseJob: (jobName: string) => request<JobStatus>(`/api/jobs/${jobName}/pause`, { method: "POST" }),
+  resumeJob: (jobName: string) => request<JobStatus>(`/api/jobs/${jobName}/resume`, { method: "POST" }),
 };

@@ -447,7 +447,7 @@ def test_sqlite_migration_is_versioned_and_idempotent(application):
         await migrate_database()
         await migrate_database()
         async with get_session_factory()() as db:
-            assert await db.scalar(text("SELECT version_num FROM alembic_version")) == "0013"
+            assert await db.scalar(text("SELECT version_num FROM alembic_version")) == "0017"
     exercise(scenario, initialize=False)
 
 

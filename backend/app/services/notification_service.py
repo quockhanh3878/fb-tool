@@ -12,6 +12,7 @@ python-telegram-bot vào tiến trình API để giữ ảnh API nhẹ.
 import re
 
 import httpx
+from sqlalchemy import select
 
 from app.config import get_settings
 
@@ -183,3 +184,64 @@ async def build_clone_notifier(db):
             await queue_text(db, user.telegram_chat_id, message)
 
     return send
+
+
+async def _queue_gateway_event(
+    db, *, user_id: str, event_type: str, summary: str, source: str,
+    occurred_at, link: str = "", dedup_key: str | None = None,
+) -> int:
+    from app.models.operations import NotificationRecipient
+    from app.services.discord_service import build_webhook_payload
+    from app.services.outbox_service import queue_notification
+
+    rows = list((await db.scalars(select(NotificationRecipient).where(
+        NotificationRecipient.user_id == user_id,
+        NotificationRecipient.is_active.is_(True),
+    ))).all())
+    queued = 0
+    for recipient in rows:
+        event_types = recipient.event_types if isinstance(recipient.event_types, list) else []
+        if event_type not in event_types and "all" not in event_types:
+            continue
+        if recipient.channel == "discord_webhook":
+            payload = build_webhook_payload(
+                event_type=event_type,
+                summary=summary,
+                source=source,
+                occurred_at=occurred_at,
+                recipient_id=recipient.recipient_id,
+                link=link,
+            )
+        elif recipient.channel == "telegram":
+            payload = {"chat_id": recipient.recipient_id, "text": summary[:4000]}
+        else:
+            continue
+        await queue_notification(
+            db,
+            channel=recipient.channel,
+            recipient_id=recipient.recipient_id,
+            payload=payload,
+            key=dedup_key,
+        )
+        queued += 1
+    return queued
+
+
+async def notify_handoff(
+    db, *, user_id: str, event_type: str, summary: str, source: str,
+    occurred_at, link: str = "", dedup_key: str | None = None,
+) -> int:
+    return await _queue_gateway_event(
+        db, user_id=user_id, event_type=event_type, summary=summary,
+        source=source, occurred_at=occurred_at, link=link, dedup_key=dedup_key,
+    )
+
+
+async def notify_error(
+    db, *, user_id: str, summary: str, source: str, occurred_at,
+    link: str = "", dedup_key: str | None = None,
+) -> int:
+    return await _queue_gateway_event(
+        db, user_id=user_id, event_type="error", summary=summary,
+        source=source, occurred_at=occurred_at, link=link, dedup_key=dedup_key,
+    )

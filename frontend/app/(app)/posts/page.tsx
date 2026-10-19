@@ -39,6 +39,7 @@ import { DEFAULT_COMMENT_TEXT } from "@/lib/defaults";
 const STATUSES = [
   { value: "", label: "Tất cả trạng thái" },
   { value: "notified", label: "Đang chờ duyệt" },
+  { value: "need_review", label: "Cần người xem" },
   { value: "matched", label: "Khớp tiêu chí" },
   { value: "commented", label: "Đã bình luận" },
   { value: "skipped", label: "Đã bỏ qua" },

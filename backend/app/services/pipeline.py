@@ -117,7 +117,13 @@ async def evaluate_post(
     extracted = result.get("extracted") or {}
     post.ai_extracted = extracted if isinstance(extracted, dict) else {}
 
-    if score < float(campaign.min_relevance_score or 0.7):
+    minimum = float(campaign.min_relevance_score or 0.7)
+    review_floor = min(float(getattr(campaign, "review_floor", 0.5) or 0.0), minimum)
+    if score < minimum and score >= review_floor:
+        post.status = PostStatus.NEED_REVIEW.value
+        post.ai_reason = f"need_review:{score:.2f}"
+        return False, post.ai_reason
+    if score < minimum:
         post.status = PostStatus.SKIPPED.value
         return False, f"low_score:{score:.2f}"
 
@@ -305,17 +311,55 @@ async def process_campaign_posts(
         stats["evaluated"] += 1
         ok, _reason = await evaluate_post(db, campaign, post, ai)
         if not ok:
+            if post.status == PostStatus.NEED_REVIEW.value:
+                from app.services.notification_service import notify_handoff
+                from app.services.outbox_service import queue_post_notification
+
+                summary = (
+                    f"Lead cần người xem trong chiến dịch {campaign.name}: "
+                    f"điểm {post.ai_relevance_score:.2f}, chưa đủ ngưỡng tự comment."
+                )
+                if user is not None and user.telegram_chat_id:
+                    await queue_post_notification(db, user.telegram_chat_id, post, campaign.name)
+                    post.status = PostStatus.NEED_REVIEW.value
+                if user is not None:
+                    await notify_handoff(
+                        db,
+                        user_id=user.id,
+                        event_type="lead",
+                        summary=summary,
+                        source="LEAD_MATCH",
+                        occurred_at=utcnow(),
+                        link=post.post_url,
+                        dedup_key=f"lead-review:{post.id}",
+                    )
+                post.notified_at = utcnow()
+                stats["notified"] += 1
             stats["skipped"] += 1
             continue
 
         stats["matched"] += 1
 
         if campaign.mode == CampaignMode.SEMI_AUTO.value:
-            if notifier is not None and user is not None and user.telegram_chat_id:
-                from app.services.outbox_service import queue_post_notification
+            from app.services.notification_service import notify_handoff
+            from app.services.outbox_service import queue_post_notification
 
+            if user is not None and user.telegram_chat_id:
                 await queue_post_notification(db, user.telegram_chat_id, post, campaign.name)
-                post.status = PostStatus.NOTIFICATION_PENDING.value
+            if user is not None:
+                await notify_handoff(
+                    db,
+                    user_id=user.id,
+                    event_type="lead",
+                    summary=f"Lead mới trong chiến dịch {campaign.name}: chỉ thông báo, không tự comment.",
+                    source="LEAD_MATCH",
+                    occurred_at=utcnow(),
+                    link=post.post_url,
+                    dedup_key=f"lead-semi:{post.id}",
+                )
+            post.status = PostStatus.NOTIFICATION_PENDING.value
+            post.notified_at = utcnow()
+            stats["notified"] += 1
             continue
 
         # full_auto
@@ -327,8 +371,26 @@ async def process_campaign_posts(
 
         comment_text, script = await build_comment(db, campaign, post, ai)
         if not comment_text:
-            post.status = PostStatus.SKIPPED.value
-            post.ai_reason = "khong_sinh_duoc_comment"
+            post.status = PostStatus.NEED_REVIEW.value
+            post.ai_reason = "need_review:no_active_script"
+            from app.services.notification_service import notify_handoff
+            from app.services.outbox_service import queue_post_notification
+
+            if user is not None and user.telegram_chat_id:
+                await queue_post_notification(db, user.telegram_chat_id, post, campaign.name)
+            if user is not None:
+                await notify_handoff(
+                    db,
+                    user_id=user.id,
+                    event_type="lead",
+                    summary=f"Lead cần người xem trong chiến dịch {campaign.name}: chưa có kịch bản đang bật.",
+                    source="LEAD_REPLY",
+                    occurred_at=utcnow(),
+                    link=post.post_url,
+                    dedup_key=f"lead-review-script:{post.id}",
+                )
+            post.notified_at = utcnow()
+            stats["notified"] += 1
             stats["skipped"] += 1
             continue
 

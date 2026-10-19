@@ -33,6 +33,8 @@ export interface TokenPair {
 export interface AppSettings {
   openai_api_key_set: boolean;
   telegram_bot_token_set: boolean;
+  discord_webhook_url_set: boolean;
+  discord_bot_token_set: boolean;
 }
 
 export interface Campaign {
@@ -51,6 +53,7 @@ export interface Campaign {
   whitelist_keywords: string[];
   blacklist_keywords: string[];
   min_relevance_score: number;
+  review_floor: number;
   max_competitor_comments: number;
   is_active: boolean;
   max_comments_per_day: number;
@@ -286,6 +289,26 @@ export interface LeadList {
   total: number;
   limit: number;
   offset: number;
+}
+
+export interface NotificationRecipient {
+  id: string;
+  channel: "discord_webhook" | "discord_dm";
+  recipient_id: string;
+  display_name: string;
+  event_types: string[];
+  source: string;
+  verified_at: string | null;
+  is_active: boolean;
+}
+
+export interface JobStatus {
+  job_name: string;
+  status: string;
+  started_at: string | null;
+  finished_at: string | null;
+  error: string | null;
+  counts: Record<string, unknown>;
 }
 
 export interface CommentAction {

@@ -150,6 +150,7 @@ function SettingsTab({ campaign, onSaved }: { campaign: Campaign; onSaved: () =>
     bump_jitter_enabled: campaign.bump_jitter_enabled ?? true,
     bump_jitter_min_minutes: campaign.bump_jitter_min_minutes ?? 5,
     bump_jitter_max_minutes: campaign.bump_jitter_max_minutes ?? 10,
+    review_floor: campaign.review_floor ?? 0.5,
   });
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
@@ -173,6 +174,7 @@ function SettingsTab({ campaign, onSaved }: { campaign: Campaign; onSaved: () =>
         whitelist_keywords: form.whitelist_keywords,
         blacklist_keywords: form.blacklist_keywords,
         min_relevance_score: Number(form.min_relevance_score),
+        review_floor: Number(form.review_floor),
         max_competitor_comments: Number(form.max_competitor_comments),
         max_comments_per_day: Number(form.max_comments_per_day),
         delay_min_seconds: Number(form.delay_min_seconds),
@@ -303,6 +305,16 @@ function SettingsTab({ campaign, onSaved }: { campaign: Campaign; onSaved: () =>
             max={1}
             value={form.min_relevance_score}
             onChange={set("min_relevance_score")}
+          />
+        </Field>
+        <Field label="Ngưỡng cần người xem" hint="Từ mức này tới ngưỡng tự comment sẽ chuyển sang cần người xem.">
+          <Input
+            type="number"
+            step="0.05"
+            min={0}
+            max={1}
+            value={form.review_floor}
+            onChange={set("review_floor")}
           />
         </Field>
         <Field label="Trần comment đối thủ" hint="Bài đông comment quá thì bỏ, tránh chen chân.">

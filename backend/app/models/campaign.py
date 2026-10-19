@@ -43,6 +43,7 @@ class Campaign(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     whitelist_keywords: Mapped[list] = mapped_column(JSON, default=list)
     blacklist_keywords: Mapped[list] = mapped_column(JSON, default=list)
     min_relevance_score: Mapped[float] = mapped_column(Float, default=0.7)
+    review_floor: Mapped[float] = mapped_column(Float, default=0.5)
     max_competitor_comments: Mapped[int] = mapped_column(Integer, default=8)
 
     is_active: Mapped[bool] = mapped_column(Boolean, default=False)

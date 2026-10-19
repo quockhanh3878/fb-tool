@@ -83,6 +83,12 @@ gantt
 
 ---
 
+### [Community Marketing & Lead Monitor (bổ sung 23/09/2026)](file:///f:/Clone/fb-tool/docs/plans/community_job_runner_plan.md)
+
+8 job tự động (PR_POST, PR_BUMP, LEAD_SCAN, LEAD_MATCH, LEAD_REPLY, PAGE_MONITOR, HANDOFF, HEALTH_CHECK) chia thành 3 worker dùng chung cổng thông báo Discord. M1a, M1b offline, M2 và PAGE_MONITOR mô phỏng đã triển khai; M3–M4, M6–M7 Chưa làm.
+
+---
+
 ## Tổng hợp số liệu
 
 | Metric | Giá trị |

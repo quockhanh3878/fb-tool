@@ -29,6 +29,7 @@ const NAV = [
   { href: "/posts", label: "Bài viết", Icon: IconPosts },
   { href: "/mentions", label: "Nhắc tới", Icon: IconBell },
   { href: "/leads", label: "Săn lead", Icon: IconUsers },
+  { href: "/jobs", label: "Job vận hành", Icon: IconHeartPulse },
   { href: "/clones", label: "Tài khoản clone", Icon: IconUsers },
   { href: "/health", label: "Sức khỏe & Proxy", Icon: IconHeartPulse },
   { href: "/stats", label: "Thống kê", Icon: IconBarChart },

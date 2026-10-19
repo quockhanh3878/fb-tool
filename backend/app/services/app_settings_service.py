@@ -16,11 +16,13 @@ from app.services.crypto import _fernet
 
 OPENAI_API_KEY = "openai_api_key"
 TELEGRAM_BOT_TOKEN = "telegram_bot_token"
+DISCORD_WEBHOOK_URL = "discord_webhook_url"
+DISCORD_BOT_TOKEN = "discord_bot_token"
 COOKIE_ENCRYPTION_KEY = "cookie_encryption_key"
 
 # Khoá cấu hình được phép sửa qua màn "Cài đặt" (không lộ cookie_encryption_key
 # ra API — tự sinh + lưu ngầm, khách không cần thấy/đổi).
-EDITABLE_KEYS = (OPENAI_API_KEY, TELEGRAM_BOT_TOKEN)
+EDITABLE_KEYS = (OPENAI_API_KEY, TELEGRAM_BOT_TOKEN, DISCORD_WEBHOOK_URL, DISCORD_BOT_TOKEN)
 
 
 async def get_value(db: AsyncSession, key: str) -> str:
@@ -77,3 +79,11 @@ async def apply_to_runtime_settings(db: AsyncSession) -> None:
     telegram_token = await get_value(db, TELEGRAM_BOT_TOKEN)
     if telegram_token:
         settings.telegram_bot_token = telegram_token
+
+    discord_webhook_url = await get_value(db, DISCORD_WEBHOOK_URL)
+    if discord_webhook_url:
+        settings.discord_webhook_url = discord_webhook_url
+
+    discord_bot_token = await get_value(db, DISCORD_BOT_TOKEN)
+    if discord_bot_token:
+        settings.discord_bot_token = discord_bot_token

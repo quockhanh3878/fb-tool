@@ -84,6 +84,7 @@ class PostStatus(StrEnum):
     NEW = "new"
     NOTIFIED = "notified"
     COMMENTED = "commented"
+    NEED_REVIEW = "need_review"
     SKIPPED = "skipped"
     EXPIRED = "expired"
     NOTIFICATION_PENDING = "notification_pending"

@@ -55,11 +55,53 @@ class AppSettingsOut(BaseModel):
     lại giá trị thật (key đã nhập không hiện lại nguyên văn)."""
     openai_api_key_set: bool
     telegram_bot_token_set: bool
+    discord_webhook_url_set: bool
+    discord_bot_token_set: bool
 
 
 class AppSettingsUpdate(BaseModel):
     openai_api_key: str | None = Field(default=None, max_length=200)
     telegram_bot_token: str | None = Field(default=None, max_length=200)
+    discord_webhook_url: str | None = Field(default=None, max_length=500)
+    discord_bot_token: str | None = Field(default=None, max_length=300)
+
+
+class DiscordLinkCodeOut(BaseModel):
+    code: str
+    expires_at: datetime
+
+
+class NotificationRecipientOut(ORMModel):
+    id: str
+    channel: str
+    recipient_id: str
+    display_name: str
+    event_types: list[str] = Field(default_factory=list)
+    source: str
+    verified_at: datetime | None = None
+    is_active: bool
+
+
+class NotificationRecipientCreate(BaseModel):
+    channel: Literal["discord_webhook", "discord_dm"]
+    recipient_id: str = Field(min_length=1, max_length=128)
+    display_name: str = Field(default="", max_length=120)
+    event_types: list[str] = Field(default_factory=lambda: ["lead", "customer_reply", "post_author_reply", "error"])
+
+
+class NotificationRecipientUpdate(BaseModel):
+    display_name: str | None = Field(default=None, max_length=120)
+    event_types: list[str] | None = None
+    is_active: bool | None = None
+
+
+class JobStatusOut(BaseModel):
+    job_name: str
+    status: str
+    started_at: datetime | None = None
+    finished_at: datetime | None = None
+    error: str | None = None
+    counts: dict[str, Any] = Field(default_factory=dict)
 
 
 class SubscriptionOut(ORMModel):
@@ -110,6 +152,7 @@ class CampaignBase(BaseModel):
     whitelist_keywords: list[str] = Field(default_factory=list)
     blacklist_keywords: list[str] = Field(default_factory=list)
     min_relevance_score: float = Field(default=0.7, ge=0.0, le=1.0)
+    review_floor: float = Field(default=0.5, ge=0.0, le=1.0)
     max_competitor_comments: int = Field(default=8, ge=0, le=1000)
     max_comments_per_day: int = Field(default=20, ge=1, le=500)
     delay_min_seconds: int = Field(default=300, ge=30)
@@ -179,6 +222,7 @@ class CampaignUpdate(BaseModel):
     whitelist_keywords: list[str] | None = None
     blacklist_keywords: list[str] | None = None
     min_relevance_score: float | None = Field(default=None, ge=0.0, le=1.0)
+    review_floor: float | None = Field(default=None, ge=0.0, le=1.0)
     max_competitor_comments: int | None = Field(default=None, ge=0, le=1000)
     publish_repeat_interval_days: int | None = Field(default=None, ge=1, le=365)
     publish_auto_bump: bool | None = None
@@ -228,6 +272,7 @@ class CampaignOut(ORMModel):
     whitelist_keywords: list[str]
     blacklist_keywords: list[str]
     min_relevance_score: float
+    review_floor: float
     max_competitor_comments: int
     is_active: bool
     max_comments_per_day: int

@@ -13,6 +13,20 @@
 
 > Cập nhật 23/09/2026: gỡ guard lỗi thời từng hủy mọi bài có `media_urls` trước khi worker chạy; hồi quy offline xác nhận ảnh được chuyển từ kho riêng của tài khoản tới adapter composer.
 
+## 5c. Community Marketing & Lead Monitor
+
+| Mốc | Trạng thái | Mã và bằng chứng |
+|---|---|---|
+| M1a — Notification Gateway + Discord webhook kênh | Xong | Migration `0014`; `discord_service.py` dựng embed đủ 6 trường, khóa ping ngoài danh sách người nhận và xử lý 429; `notification_service.py` lọc người nhận theo tenant/event; outbox hỗ trợ `telegram` và `discord_webhook`. `backend/tests/test_notification_gateway.py` — 3 PASS; Alembic upgrade/downgrade/re-upgrade sạch; bộ kiểm thử backend hiện tại 79 PASS. |
+| M1b — Discord bot DM đăng ký offline | Xong | `discord_bot.py` đọc `DISCORD_BOT_TOKEN` từ môi trường, chỉ xử lý DM `/dangky <mã>` và `/huy`; desktop-only `POST /api/settings/discord-link-code` sinh mã một lần; recipient tạo với `channel=discord_dm`. Migration `0017`; `backend/tests/test_discord_bot.py` PASS; `discord.py==2.7.1` đã cài trong venv. Chưa chạy Gateway live vì tiến trình kiểm thử không có token. |
+| M5 — PAGE_MONITOR mô phỏng offline | Xong | Migration `0015`; `interaction_service.py` lọc comment trong lookback, loại comment của mình, phân loại khách/người đăng bài, dedup và HANDOFF; `interaction_task.py` có đường worker đọc-only. `backend/tests/test_interaction_watcher.py` mô phỏng link bài + dữ liệu trong 24 giờ: 2 tương tác/2 HANDOFF, chạy lại 0 bản ghi mới; bộ kiểm thử backend hiện tại 79 PASS. Chưa chạy selector Facebook thật. |
+| M2 — Job registry + HEALTH_CHECK offline | Xong | Migration `0016`; bảng `job_runs`, 8 tên job, trạng thái `running/success/error/paused`, circuit breaker sau 3 lỗi liên tiếp và cảnh báo job quá hạn qua outbox dedup. `backend/tests/test_job_registry.py`; bộ kiểm thử backend hiện tại 79 PASS; Alembic upgrade/downgrade/re-upgrade sạch. Chưa chạy soak/live worker. |
+| M0 — Đo nền pipeline/backend | Chờ | Pipeline offline đạt 112 PASS / 1 FAIL vì thiếu `commhunter/configs/nyatymita.yaml`; không tạo hoặc copy cấu hình khách theo hợp đồng bảo mật. Bộ kiểm thử backend hiện tại 79 PASS. |
+| M3 — PR worker safety offline | Chờ | Publisher đã có guard duplicate theo campaign/group/content trong repeat window; bump tự ưu tiên permalink publish mới nhất rồi chạy probe read-only, dừng khi post `gone`/`unknown`; classifier và duplicate guard có trong `backend/tests/test_pr_worker.py`. Chưa có browser/CDP evidence cho flow thật. |
+| M4 — Lead modes + review floor offline | Xong | `review_floor` + `PostStatus.NEED_REVIEW`; `full_auto` chỉ tự comment khi đạt ngưỡng và có script, vùng lưng chừng hoặc thiếu script chuyển `need_review` và phát handoff; `semi_auto` chỉ thông báo qua gateway, không xếp comment; `backend/tests/test_lead_modes.py` nằm trong targeted gate 11 PASS. |
+| M6 — Dashboard/operator controls | Chờ | `/jobs` hiển thị 8 job và pause/resume; `/settings` có Discord webhook, bot token và recipient CRUD; campaign editor có `review_floor`; frontend `npx tsc --noEmit` PASS. Chưa có browser/manual acceptance cho dashboard và Discord send-test. |
+| M7 — Chạy thật + đóng gói/soak | Chờ | Chưa chạy Facebook burner/CDP, Discord Gateway live hoặc soak/package acceptance trong phiên này; không ghi nhận `Xong` khi thiếu bằng chứng đó. |
+
 ## 1. Bảng điểm tổng
 
 | Phase | Task theo plan | Đã có mã + test | Chặn bởi yếu tố ngoài | Ghi chú |

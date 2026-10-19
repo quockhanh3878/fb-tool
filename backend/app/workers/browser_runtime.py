@@ -50,6 +50,18 @@ class ScoutCheckpoint(RuntimeError):
     """
 
 
+def classify_post_body(body: str) -> str:
+    """Classify a rendered permalink without treating an unknown DOM as alive."""
+    normalized = (body or "").strip().lower()
+    from constants import POST_GONE_MARKERS
+
+    if any(marker in normalized for marker in POST_GONE_MARKERS):
+        return "gone"
+    if len(normalized) < 40:
+        return "unknown"
+    return "alive"
+
+
 def wrap_scout_error(exc: BaseException) -> BaseException:
     """Đổi CheckpointError của Phase 1 thành ScoutCheckpoint; giữ nguyên lỗi khác.
 
@@ -261,6 +273,28 @@ async def scrape_post_comments_raw(
         if wrapped is not exc:
             raise wrapped from exc
         raise
+    finally:
+        await manager.close_all()
+
+
+@exclusive_browser
+async def check_post_alive_real(clone, post_url: str, cookies: list | None = None) -> dict:
+    """Read-only probe used by PR_BUMP; unknown DOM never authorizes a bump."""
+    post_url = facebook_url(post_url)
+    BrowserManager, ScoutWorker, _ = load_phase1_modules()
+    config = build_runtime_config(clone, [])
+    _maybe_write_cookies(config, clone, cookies)
+    manager = BrowserManager(config)
+    scout = ScoutWorker(manager, config)
+    try:
+        page = await scout._get_page()
+        await page.goto(post_url, wait_until="domcontentloaded")
+        await page.wait_for_timeout(1200)
+        if BrowserManager.detect_checkpoint_url(page.url) or "login" in page.url.lower():
+            return {"status": "unknown", "reason": "checkpoint_or_login"}
+        body = (await page.text_content("body")) or ""
+        status = classify_post_body(body)
+        return {"status": status, "reason": "post_gone_marker" if status == "gone" else ""}
     finally:
         await manager.close_all()
 

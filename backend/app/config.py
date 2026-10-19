@@ -65,6 +65,8 @@ class Settings(BaseSettings):
     openai_model: str = "gpt-4o-mini"
     telegram_bot_token: str = Field(default="", repr=False)
     telegram_webhook_secret: str = Field(default="", repr=False)
+    discord_webhook_url: str = Field(default="", repr=False)
+    discord_bot_token: str = Field(default="", repr=False)
     max_request_bytes: int = Field(default=3 * 1024 * 1024, ge=1024, le=10 * 1024 * 1024)
     max_pending_per_user: int = Field(default=100, ge=1, le=1000)
     ai_calls_per_user_per_day: int = Field(default=200, ge=0, le=10000)

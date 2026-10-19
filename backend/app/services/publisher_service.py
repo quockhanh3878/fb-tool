@@ -34,6 +34,7 @@ from app.services.publishing_media import parse_media_reference
 
 # Trạng thái đăng vào 1 group được coi là "đã ghi lên Facebook" (tính quota).
 _POSTED_STATUSES = {"published", "published_no_url"}
+_DUPLICATE_STATUSES = {"duplicate_pr", "skipped_duplicate"}
 
 
 def _save_publish_history(db, post_pub, clone, target: dict, result: dict, content: str) -> None:
@@ -64,6 +65,33 @@ def as_utc(dt: datetime | None) -> datetime | None:
     if dt.tzinfo is None:
         return dt.replace(tzinfo=timezone.utc)
     return dt.astimezone(timezone.utc)
+
+
+async def _has_recent_duplicate(
+    db: AsyncSession,
+    post_pub: PostPublish,
+    target: dict,
+    content: str,
+    now: datetime,
+    repeat_days: int,
+) -> bool:
+    """Check the same rendered PR per group inside the configured repeat window."""
+    cutoff = now - timedelta(days=max(1, int(repeat_days or 14)))
+    query = select(PostPublishHistory).where(
+        PostPublishHistory.user_id == post_pub.user_id,
+        PostPublishHistory.campaign_id == post_pub.campaign_id,
+        PostPublishHistory.status.in_(_POSTED_STATUSES),
+        PostPublishHistory.published_at.is_not(None),
+        PostPublishHistory.published_at >= cutoff,
+        PostPublishHistory.content_snapshot == content,
+    )
+    group_id = str(target.get("group_id") or "")
+    group_url = str(target.get("group_url") or "")
+    if group_id:
+        query = query.where(PostPublishHistory.group_id == group_id)
+    else:
+        query = query.where(PostPublishHistory.group_url == group_url)
+    return (await db.scalar(query.limit(1))) is not None
 
 
 def clone_can_post(clone: CloneAccount, now: datetime | None = None) -> bool:
@@ -245,6 +273,27 @@ async def _publish_claimed(db, post_pub, clone, now):
             break
         await db.commit()
 
+        # Mỗi nhóm một bản render spintax riêng để vừa chống lặp vừa tránh đăng
+        # nguyên xi cùng một nội dung vào nhiều nhóm.
+        try:
+            content_to_post = render_spintax(raw_template) if "{" in raw_template else raw_template
+        except ScriptError:
+            content_to_post = raw_template
+
+        repeat_days = post_pub.repeat_interval_days or (
+            campaign.publish_repeat_interval_days if campaign else DEFAULT_PUBLISH_REPEAT_INTERVAL_DAYS
+        )
+        if await _has_recent_duplicate(db, post_pub, target, content_to_post, now, repeat_days):
+            result = {
+                "group_id": group_id, "group_name": group_name, "group_url": group_url,
+                "clone_id": clone.id, "clone_name": clone.display_name,
+                "post_url": None, "status": "skipped_duplicate", "error": "duplicate_pr",
+            }
+            results.append(result)
+            _save_publish_history(db, post_pub, clone, target, result, content_to_post)
+            await db.commit()
+            continue
+
         # Hết quota post trong ngày -> dừng, các nhóm còn lại báo skipped.
         if used_today + posted_count >= limit:
             result = {
@@ -256,13 +305,6 @@ async def _publish_claimed(db, post_pub, clone, now):
             results.append(result)
             _save_publish_history(db, post_pub, clone, target, result, raw_template)
             continue
-
-        # Mỗi nhóm một bản render spintax riêng — đăng y hệt vào mọi nhóm là
-        # dấu hiệu spam rõ nhất.
-        try:
-            content_to_post = render_spintax(raw_template) if "{" in raw_template else raw_template
-        except ScriptError:
-            content_to_post = raw_template
 
         try:
             outcome = await publish_post_real(
@@ -336,7 +378,16 @@ async def _publish_claimed(db, post_pub, clone, now):
             clone.daily_post_count = used_today + posted_count
         clone.last_activity_at = now
 
-    if posted_count == 0:
+    if posted_count == 0 and results and all(
+        result.get("status") in _DUPLICATE_STATUSES | {"skipped_quota"}
+        for result in results
+    ):
+        post_pub.status = PublishStatus.CANCELLED.value
+        post_pub.error_message = "duplicate_pr" if any(
+            result.get("status") in _DUPLICATE_STATUSES for result in results
+        ) else "quota_reached"
+        post_pub.published_at = None
+    elif posted_count == 0:
         post_pub.status = PublishStatus.FAILED.value
         post_pub.error_message = "Đăng bài thất bại vào toàn bộ nhóm mục tiêu."
         post_pub.published_at = None

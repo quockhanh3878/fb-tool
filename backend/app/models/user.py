@@ -20,6 +20,8 @@ class User(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     # Mã dùng 1 lần để người dùng gõ trong Telegram nhằm liên kết chat_id.
     telegram_link_code: Mapped[str | None] = mapped_column(String(16), index=True)
     telegram_link_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    discord_link_code: Mapped[str | None] = mapped_column(String(16), index=True)
+    discord_link_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     tier: Mapped[str] = mapped_column(String(20), default=UserTier.STARTER.value)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     is_admin: Mapped[bool] = mapped_column(Boolean, default=False)

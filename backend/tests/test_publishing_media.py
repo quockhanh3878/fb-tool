@@ -19,6 +19,7 @@ async def _run():
     media_root = Path(tempfile.mkdtemp()) / "media"
     os.environ.update(
         APP_ENV="test",
+        RUN_MODE="saas",
         DEBUG="false",
         DATABASE_URL=f"sqlite+aiosqlite:///{Path(tempfile.mkdtemp()) / 'publishing_media.db'}",
         PUBLISHING_MEDIA_ROOT=str(media_root),

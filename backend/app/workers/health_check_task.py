@@ -13,6 +13,7 @@ from app.models.enums import AccountState, AccountTransition, HealthEventType, P
 from app.services.account_check import read_cookie_health
 from app.services.account_manager import AccountManager
 from app.services.facebook_utils import EXPIRY_WARNING_DAYS
+from app.services.job_registry import check_job_health
 from app.services.notification_service import build_clone_notifier
 from app.services.proxy_manager import ProxyManager, check_proxy_health
 from app.workers.celery_app import celery_app, run_async
@@ -116,6 +117,13 @@ async def _check_proxies() -> dict:
         return {"checked": checked, "dead": dead}
 
 
+async def _check_jobs() -> dict:
+    async with get_session_factory()() as db:
+        result = await check_job_health(db)
+        await db.commit()
+        return result
+
+
 @celery_app.task(name="app.workers.health_check_task.check_all_clones")
 def check_all_clones() -> dict:
     return run_async(_check_all())
@@ -129,3 +137,8 @@ def wake_cooldowns() -> dict:
 @celery_app.task(name="app.workers.health_check_task.check_proxy_pool")
 def check_proxy_pool() -> dict:
     return run_async(_check_proxies())
+
+
+@celery_app.task(name="app.workers.health_check_task.check_job_health")
+def check_job_health_task() -> dict:
+    return run_async(_check_jobs())

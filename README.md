@@ -4,6 +4,15 @@ Dự án phát triển nền tảng tự động hóa tìm kiếm khách hàng, 
 
 > Ghi chú sử dụng hiện tại cho anh Ber: [bản local/desktop đang dùng](docs/plans/current_use_note.md).
 
+> **Trạng thái hiện tại: công cụ nội bộ do dev sử dụng.** Đây chưa phải sản phẩm phát hành, tài liệu bàn giao, hay checklist để khách hàng tự cài đặt và nhập cấu hình.
+
+## Hợp đồng thực thi cho agent
+
+- Agent tự hoàn thành các bước setup an toàn trong máy dev: dựng venv, cài dependency, chạy migration SQLite cục bộ, khởi động dịch vụ cần thiết, chạy test/build phù hợp và sửa lỗi setup thuộc phạm vi công việc.
+- Agent báo kết quả chạy thật (PASS/FAIL/chưa kiểm chứng), không giao lại một danh sách lệnh cho anh Ber hoặc khách hàng tự chạy thay.
+- Không đọc, tạo, sao chép hoặc yêu cầu đưa vào README các cấu hình khách hàng, cookie, API key hay profile Chrome. Nếu một bước thực sự cần secret hoặc ghi lên Facebook thật, agent nêu đúng phần bị chặn và chờ anh Ber cho phép trong cuộc hội thoại hiện tại.
+- Không gọi trạng thái hiện tại là release, production-ready hay sản phẩm SaaS đã bàn giao. Mọi xác nhận chỉ có giá trị cho môi trường dev/test đã kiểm chứng.
+
 ---
 
 ## Mục lục Tài liệu dự án
@@ -101,35 +110,33 @@ fb-tool/
 
 ---
 
-## Chạy thử nhanh
+## Agent setup và kiểm chứng nội bộ
 
-> **Repo dùng venv riêng ở `.venv/`.** Thư viện Python đã cài sẵn trong đó — không
-> `pip install` vào Python chung của máy. Dựng lại từ đầu (khi mới clone hoặc venv hỏng):
+Agent tự thực hiện các bước sau khi môi trường local chưa sẵn sàng. Không chuyển phần này thành hướng dẫn để khách hàng tự cài hoặc tự điền cấu hình.
+
+> **Repo dùng venv riêng ở `.venv/`.** Không `pip install` vào Python chung của máy. Dựng lại khi venv thiếu hoặc hỏng:
 >
 > ```powershell
-> python -m venv .venv
+> py -3.11 -m venv .venv
 > .venv\Scripts\python.exe -m pip install -r backend/requirements.txt -r commhunter/requirements.txt
 > .venv\Scripts\python.exe -m playwright install chromium   # bản dự phòng khi máy không có Chrome
+> cd frontend; npm ci; cd ..
 > ```
 
-Chạy từ **thư mục gốc repo**, mọi lệnh Python đều gọi qua venv:
+Chạy từ **thư mục gốc repo**, mọi lệnh Python đều gọi qua venv. Đây là kiểm chứng offline mặc định; không cần config khách hàng, secret hay thao tác Facebook:
 
 ```powershell
-copy commhunter\configs\example.yaml commhunter\configs\khach.yaml   # sửa cho đúng khách hàng
-# Đặt OPENAI_API_KEY / TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID vào file .env ở thư mục gốc
-
-.venv\Scripts\python.exe commhunter\commhunter.py status --config commhunter\configs\khach.yaml
-.venv\Scripts\python.exe commhunter\commhunter.py login  --config commhunter\configs\khach.yaml --profile scout
-.venv\Scripts\python.exe commhunter\commhunter.py login  --config commhunter\configs\khach.yaml --profile shooter
-.venv\Scripts\python.exe commhunter\commhunter.py run    --config commhunter\configs\khach.yaml
-
 .venv\Scripts\python.exe commhunter\tests\test_pipeline.py          # smoke test, không cần mạng
+.venv\Scripts\python.exe commhunter\tests\test_templates.py         # kho mẫu comment
 .venv\Scripts\python.exe commhunter\tests\test_browser.py           # test vân tay + cấu hình trình duyệt
-.venv\Scripts\python.exe commhunter\tests\test_browser.py --live    # + mở Chrome thật kiểm chứng
+cd backend; ..\.venv\Scripts\python.exe tests\test_api.py; cd ..     # API SQLite, offline
+cd frontend; npx tsc --noEmit; npx next build; cd ..                    # dashboard
 ```
 
 > Gõ `python` trần là chạy nhầm Python chung của máy — thiếu thư viện, hoặc lệch phiên bản
 > làm mọi bộ test chết ngay ở bước `import`. Luôn đi qua `.venv\Scripts\python.exe`.
+
+Kiểm chứng browser qua Chrome/CDP hoặc bất kỳ thao tác ghi nào lên Facebook thật là một lane riêng: chỉ chạy với nick phụ, có sự đồng ý rõ của anh Ber và phải dọn dữ liệu test sau khi xong.
 
 ### Trình duyệt: Chrome thật + vân tay theo nick + chế độ attach
 
@@ -147,18 +154,18 @@ copy commhunter\configs\example.yaml commhunter\configs\khach.yaml   # sửa cho
   - **Backend (worker Celery)**: đặt biến môi trường `BROWSER_CDP_ENDPOINT=http://localhost:9222`
     trong `backend/.env` — mọi thao tác trình duyệt (Scout quét nhóm, Shooter
     comment/đăng bài) attach vào Chrome đó, clone **không cần** `cookie_data_encrypted`.
-    Chỉ dùng cho dev/test trên máy anh Ber; production để rỗng.
+    Chỉ dùng cho dev/test trên máy anh Ber; ngoài môi trường dev/test để rỗng.
 
 > **Sprint 0 Hardening đã hoàn thành.** 4 lỗi mức nặng (warmup click bừa, verify dương tính giả, rate limit đếm sai, không có circuit-breaker) đã được xử lý triệt để. Bộ test pipeline offline đạt **104/104 PASS**. Hệ thống an toàn và sẵn sàng bước vào Sprint 3 kiểm thử trên Facebook thật.
 
 ---
 
-## Chạy nền tảng SaaS (Backend + Dashboard)
+## Khởi động môi trường nội bộ (Backend + Dashboard)
 
-### Cách 1 — Docker (đầy đủ 5 service: db, redis, api, worker, beat)
+### Cách 1 — Docker local (đầy đủ 5 service: db, redis, api, worker, beat)
 
-```bash
-cp backend/.env.example backend/.env           # sửa JWT_SECRET & COOKIE_ENCRYPTION_KEY
+```powershell
+Copy-Item backend/.env.example backend/.env     # agent tạo file local, không in giá trị secret
 docker compose -f backend/docker-compose.yaml up -d --build
 curl http://localhost:8000/health              # {"status":"ok"}
 ```
@@ -169,7 +176,7 @@ Thêm dashboard (service thứ 6, chạy ở cổng 3000):
 docker compose -f backend/docker-compose.yaml --profile dashboard up -d --build
 ```
 
-### Cách 2 — Chạy tay khi phát triển (SQLite, không cần Docker)
+### Cách 2 — Chạy tay trong dev (SQLite, không cần Docker)
 
 ```powershell
 cd backend

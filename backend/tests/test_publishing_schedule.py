@@ -5,8 +5,10 @@ import base64
 import os
 
 os.environ.setdefault("APP_ENV", "test")
+os.environ.setdefault("RUN_MODE", "saas")
 os.environ["DEBUG"] = "false"
 os.environ.setdefault("JWT_SECRET", "offline-schedule-test-secret-32-bytes-2026")
+os.environ.setdefault("DESKTOP_INSTANCE_SECRET", "offline-desktop-secret-32-bytes-minimum-2026")
 os.environ.setdefault(
     "COOKIE_ENCRYPTION_KEY", base64.urlsafe_b64encode(bytes(range(32))).decode()
 )

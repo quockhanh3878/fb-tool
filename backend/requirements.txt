@@ -26,6 +26,7 @@ apscheduler==3.11.3
 
 # --- HTTP client (Telegram, proxy health, OpenAI) ---
 httpx==0.28.1
+discord.py==2.7.1
 
 # --- Browser automation (dung chung code Phase 1) ---
 playwright==1.62.0

@@ -24,7 +24,7 @@ def settings(**changes):
     values = {
         "jwt_secret": TEST_JWT, "cookie_encryption_key": TEST_FERNET,
         "app_env": "test", "run_mode": "saas", "telegram_bot_token": "",
-        "browser_cdp_endpoint": "",
+        "browser_cdp_endpoint": "", "desktop_instance_secret": "",
     }
     values.update(changes)
     return Settings(_env_file=None, **values)

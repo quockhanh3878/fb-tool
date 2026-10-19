@@ -1,7 +1,7 @@
 """Durable records for authorization, payments and delivery."""
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, Integer, JSON, String, Text
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, JSON, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
@@ -51,6 +51,7 @@ class NotificationOutbox(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     __tablename__ = "notification_outbox"
 
     dedup_key: Mapped[str | None] = mapped_column(String(160), unique=True)
+    channel: Mapped[str] = mapped_column(String(24), default="telegram", server_default="telegram")
     chat_id: Mapped[str] = mapped_column(String(64))
     bot_scope: Mapped[str] = mapped_column(String(32))
     payload: Mapped[dict] = mapped_column(JSON)
@@ -60,3 +61,24 @@ class NotificationOutbox(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     next_attempt_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
     lease_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     last_error: Mapped[str | None] = mapped_column(Text)
+
+
+class NotificationRecipient(Base, UUIDPrimaryKeyMixin, TimestampMixin):
+    """Người nhận thông báo theo từng khách hàng và kênh."""
+
+    __tablename__ = "notification_recipients"
+    __table_args__ = (
+        UniqueConstraint(
+            "user_id", "channel", "recipient_id",
+            name="uq_notification_recipient_target",
+        ),
+    )
+
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    channel: Mapped[str] = mapped_column(String(24))
+    recipient_id: Mapped[str] = mapped_column(String(128))
+    display_name: Mapped[str] = mapped_column(String(120), default="")
+    event_types: Mapped[list] = mapped_column(JSON, default=list)
+    source: Mapped[str] = mapped_column(String(24), default="manual")
+    verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)

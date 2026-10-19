@@ -14,11 +14,14 @@ from fastapi import HTTPException
 from app.database import get_session_factory
 from app.models.base import as_utc, utcnow
 from app.models.campaign import BumpSchedule, Campaign
-from app.models.enums import CommentStatus, PostStatus
-from app.models.post import CommentAction, DiscoveredPost
+from app.models.enums import AccountState, CloneRole, CommentStatus, PostStatus
+from app.models.post import CommentAction, DiscoveredPost, PostPublishHistory
 from app.services.pipeline import compute_content_hash, count_today_actions, queue_comment
 from app.services.execution_policy import lock_user, require_entitlement
+from app.services.notification_service import notify_error
 from app.services.script_engine import ScriptError, render_spintax, validate_comment
+from app.services.crypto import decrypt_cookies
+from app.workers.browser_runtime import BrowserRuntimeUnavailable, check_post_alive_real
 from app.workers.celery_app import celery_app, run_async
 
 LOCAL_TZ = ZoneInfo("Asia/Ho_Chi_Minh")
@@ -156,6 +159,27 @@ async def _bump_one(bump_id: str) -> dict:
         if not subscription.bump_enabled:
             return {"skipped": "bump_not_enabled"}
 
+        latest_history = await db.scalar(
+            select(PostPublishHistory)
+            .where(
+                PostPublishHistory.user_id == campaign.user_id,
+                PostPublishHistory.campaign_id == campaign.id,
+                PostPublishHistory.status.in_(("published", "published_no_url")),
+                PostPublishHistory.post_url != "",
+            )
+            .order_by(PostPublishHistory.published_at.desc())
+            .limit(1)
+        )
+        target_post_url = str(
+            (latest_history.post_url if latest_history is not None else bump.target_post_url)
+            or ""
+        ).strip()
+        if not target_post_url:
+            return {"skipped": "no_target_post"}
+        # A successful publish becomes the canonical bump target; a manually
+        # entered URL remains the fallback for legacy schedules.
+        bump.target_post_url = target_post_url
+
         used = await count_today_actions(db, campaign.id)
         if used >= int(campaign.max_comments_per_day or 20):
             return {"skipped": f"quota:{used}"}
@@ -168,9 +192,73 @@ async def _bump_one(bump_id: str) -> dict:
         except ScriptError as exc:
             return {"skipped": f"invalid_message: {exc}"}
 
+        # Bump là hành động ghi lên Facebook: nếu không xác nhận được bài còn
+        # sống thì dừng an toàn, không xếp comment mù.
+        try:
+            from app.models.clone_account import CloneAccount
+            scout_result = await db.execute(
+                select(CloneAccount).where(
+                    CloneAccount.user_id == campaign.user_id,
+                    CloneAccount.status == AccountState.ACTIVE.value,
+                    CloneAccount.role.in_(
+                        (
+                            CloneRole.SCOUT.value,
+                            CloneRole.POSTER.value,
+                            CloneRole.BOTH.value,
+                            CloneRole.ALL.value,
+                        )
+                    ),
+                ).limit(1)
+            )
+            probe_clone = scout_result.scalars().first()
+            if probe_clone is None:
+                return {"error": "no_active_clone_for_post_probe"}
+            cookies = decrypt_cookies(probe_clone.cookie_data_encrypted)
+            probe = await check_post_alive_real(probe_clone, target_post_url, cookies)
+        except BrowserRuntimeUnavailable as exc:
+            await notify_error(
+                db,
+                user_id=campaign.user_id,
+                summary=f"Không xác nhận được bài bump còn sống: {exc}",
+                source="PR_BUMP",
+                occurred_at=utcnow(),
+                link=target_post_url,
+                dedup_key=f"bump-probe:{bump.id}:{utcnow().date().isoformat()}",
+            )
+            await db.commit()
+            return {"error": "post_probe_unavailable"}
+        except Exception:
+            await notify_error(
+                db,
+                user_id=campaign.user_id,
+                summary="Không xác nhận được bài bump còn sống; đã dừng để tránh comment nhầm.",
+                source="PR_BUMP",
+                occurred_at=utcnow(),
+                link=target_post_url,
+                dedup_key=f"bump-probe:{bump.id}:{utcnow().date().isoformat()}",
+            )
+            await db.commit()
+            return {"error": "post_probe_failed"}
+        if probe.get("status") == "gone":
+            bump.is_active = False
+            await notify_error(
+                db,
+                user_id=campaign.user_id,
+                summary="Bài PR đã biến mất hoặc bị khóa; lịch bump đã tạm dừng.",
+                source="PR_BUMP",
+                occurred_at=utcnow(),
+                link=target_post_url,
+                dedup_key=f"bump-gone:{bump.id}",
+            )
+            await db.commit()
+            return {"skipped": "inactive_post"}
+        if probe.get("status") != "alive":
+            await db.commit()
+            return {"error": "post_probe_unrecognized_dom"}
+
         # Bài bump là bài của chính khách nên không đi qua Scout; tạo bản ghi
         # DiscoveredPost tối thiểu để hàng đợi comment có chỗ móc vào.
-        content_hash = compute_content_hash("bump", bump.target_post_url)
+        content_hash = compute_content_hash("bump", target_post_url)
         existing = await db.execute(
             select(DiscoveredPost).where(
                 DiscoveredPost.campaign_id == campaign.id,
@@ -182,9 +270,9 @@ async def _bump_one(bump_id: str) -> dict:
             post = DiscoveredPost(
                 campaign_id=campaign.id,
                 content_hash=content_hash,
-                post_url=bump.target_post_url,
+                post_url=target_post_url,
                 author_name="(bump)",
-                content_text=f"Bump bài: {bump.target_post_url}",
+                content_text=f"Bump bài: {target_post_url}",
                 status=PostStatus.NOTIFIED.value,
             )
             db.add(post)

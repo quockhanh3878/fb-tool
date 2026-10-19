@@ -23,7 +23,7 @@ import {
 } from "@/components/ui";
 import { API_URL, api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
-import type { AppSettings } from "@/lib/types";
+import type { AppSettings, NotificationRecipient } from "@/lib/types";
 
 export default function SettingsPage() {
   const { user, refreshUser, logout } = useAuth();
@@ -37,31 +37,93 @@ export default function SettingsPage() {
   const [appSettings, setAppSettings] = useState<AppSettings | null>(null);
   const [openaiKey, setOpenaiKey] = useState("");
   const [telegramToken, setTelegramToken] = useState("");
+  const [discordWebhook, setDiscordWebhook] = useState("");
+  const [discordBotToken, setDiscordBotToken] = useState("");
   const [savingAppSettings, setSavingAppSettings] = useState(false);
+  const [recipients, setRecipients] = useState<NotificationRecipient[]>([]);
+  const [recipientId, setRecipientId] = useState("");
+  const [recipientName, setRecipientName] = useState("");
+  const [recipientBusy, setRecipientBusy] = useState(false);
+  const [discordTestBusy, setDiscordTestBusy] = useState(false);
+  const [discordLinkCode, setDiscordLinkCode] = useState<{ code: string; expires_at: string } | null>(null);
 
   useEffect(() => {
     api
       .appSettings()
       .then(setAppSettings)
       .catch(() => setAppSettings(null));
+    api.discordRecipients().then(setRecipients).catch(() => setRecipients([]));
   }, []);
 
   async function saveAppSettings() {
     setError("");
     setSavingAppSettings(true);
     try {
-      const payload: { openai_api_key?: string; telegram_bot_token?: string } = {};
+      const payload: { openai_api_key?: string; telegram_bot_token?: string; discord_webhook_url?: string; discord_bot_token?: string } = {};
       if (openaiKey.trim()) payload.openai_api_key = openaiKey.trim();
       if (telegramToken.trim()) payload.telegram_bot_token = telegramToken.trim();
+      if (discordWebhook.trim()) payload.discord_webhook_url = discordWebhook.trim();
+      if (discordBotToken.trim()) payload.discord_bot_token = discordBotToken.trim();
       const result = await api.updateAppSettings(payload);
       setAppSettings(result);
       setOpenaiKey("");
       setTelegramToken("");
+      setDiscordWebhook("");
+      setDiscordBotToken("");
       toast.success("Đã lưu cấu hình hệ thống", "Thành công");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Lưu cấu hình thất bại");
     } finally {
       setSavingAppSettings(false);
+    }
+  }
+
+  async function addRecipient() {
+    if (!recipientId.trim()) return;
+    setRecipientBusy(true);
+    try {
+      const recipient = await api.createDiscordRecipient({
+        channel: "discord_webhook",
+        recipient_id: recipientId.trim(),
+        display_name: recipientName.trim(),
+        event_types: ["lead", "customer_reply", "post_author_reply", "error"],
+      });
+      setRecipients((current) => [...current, recipient]);
+      setRecipientId("");
+      setRecipientName("");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Không thêm được người nhận");
+    } finally {
+      setRecipientBusy(false);
+    }
+  }
+
+  async function removeRecipient(id: string) {
+    try {
+      await api.deleteDiscordRecipient(id);
+      setRecipients((current) => current.filter((item) => item.id !== id));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Không xoá được người nhận");
+    }
+  }
+
+  async function sendDiscordTest() {
+    setDiscordTestBusy(true);
+    try {
+      await api.sendDiscordTest();
+      toast.success("Đã gửi tin thử tới Discord", "Thành công");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Gửi tin thử thất bại");
+    } finally {
+      setDiscordTestBusy(false);
+    }
+  }
+
+  async function createDiscordCode() {
+    try {
+      setDiscordLinkCode(await api.createDiscordLinkCode());
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Không tạo được mã Discord");
     }
   }
 
@@ -165,13 +227,18 @@ export default function SettingsPage() {
           title={
             <div className="flex items-center gap-2">
               <IconSparkles size={17} className="text-amber-500" />
-              <span>Cấu hình OpenAI &amp; Telegram Bot</span>
+              <span>Cấu hình OpenAI, Telegram &amp; Discord</span>
             </div>
           }
           action={
-            <Button size="sm" onClick={saveAppSettings} loading={savingAppSettings} disabled={savingAppSettings}>
-              Lưu cấu hình
-            </Button>
+            <div className="flex flex-wrap justify-end gap-2">
+              <Button size="sm" variant="outline" onClick={sendDiscordTest} loading={discordTestBusy} disabled={discordTestBusy || !appSettings.discord_webhook_url_set}>
+                Gửi thử Discord
+              </Button>
+              <Button size="sm" onClick={saveAppSettings} loading={savingAppSettings} disabled={savingAppSettings}>
+                Lưu cấu hình
+              </Button>
+            </div>
           }
         >
           <div className="grid gap-4 sm:grid-cols-2">
@@ -183,6 +250,26 @@ export default function SettingsPage() {
                 value={openaiKey}
                 placeholder={appSettings.openai_api_key_set ? "••••••••••••••••" : "sk-..."}
                 onChange={(e) => setOpenaiKey(e.target.value)}
+              />
+            </Field>
+            <Field
+              label={`Discord Webhook ${appSettings.discord_webhook_url_set ? "(đã cấu hình)" : "(chưa cấu hình)"}`}
+            >
+              <Input
+                type="password"
+                value={discordWebhook}
+                placeholder={appSettings.discord_webhook_url_set ? "••••••••••••" : "https://discord.com/api/webhooks/..."}
+                onChange={(e) => setDiscordWebhook(e.target.value)}
+              />
+            </Field>
+            <Field
+              label={`Discord Bot Token ${appSettings.discord_bot_token_set ? "(đã cấu hình)" : "(chưa cấu hình)"}`}
+            >
+              <Input
+                type="password"
+                value={discordBotToken}
+                placeholder={appSettings.discord_bot_token_set ? "••••••••••••" : "Dán token bot Discord"}
+                onChange={(e) => setDiscordBotToken(e.target.value)}
               />
             </Field>
             <Field
@@ -199,6 +286,33 @@ export default function SettingsPage() {
           <p className="mt-3 text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
             Để trống ô nào thì giữ nguyên giá trị đang lưu của ô đó. Áp dụng ngay không cần khởi động lại app.
           </p>
+          <div className="mt-4 flex flex-wrap items-center gap-2">
+            <Button size="sm" variant="ghost" onClick={createDiscordCode}>Tạo mã đăng ký bot Discord</Button>
+            {discordLinkCode && <code className="rounded bg-slate-100 px-2 py-1 text-xs dark:bg-slate-800">{discordLinkCode.code}</code>}
+            {discordLinkCode && <span className="text-xs text-slate-500">Hết hạn {fmtDate(discordLinkCode.expires_at)}</span>}
+          </div>
+        </Card>
+      )}
+
+      {appSettings && (
+        <Card title="Người nhận cảnh báo Discord">
+          <div className="grid gap-3 sm:grid-cols-[1fr_1fr_auto]">
+            <Input value={recipientName} placeholder="Tên hiển thị" onChange={(e) => setRecipientName(e.target.value)} />
+            <Input value={recipientId} placeholder="Discord user ID" onChange={(e) => setRecipientId(e.target.value)} />
+            <Button size="sm" onClick={addRecipient} loading={recipientBusy} disabled={!recipientId.trim()}>Thêm</Button>
+          </div>
+          <div className="mt-4 space-y-2">
+            {!recipients.length && <p className="text-xs text-slate-500">Chưa có người nhận. Có thể dùng ID tay hoặc mã đăng ký bot Discord.</p>}
+            {recipients.map((recipient) => (
+              <div key={recipient.id} className="flex items-center justify-between rounded-xl border border-slate-200 p-3 text-xs dark:border-slate-800">
+                <div>
+                  <p className="font-semibold text-slate-800 dark:text-slate-200">{recipient.display_name || recipient.recipient_id}</p>
+                  <p className="text-slate-500">{recipient.channel} · {recipient.source} · {recipient.is_active ? "Đang bật" : "Đã tắt"}</p>
+                </div>
+                <Button size="sm" variant="ghost" onClick={() => removeRecipient(recipient.id)}>Xoá</Button>
+              </div>
+            ))}
+          </div>
         </Card>
       )}
 

@@ -9,7 +9,8 @@ from app.models.enums import CommentStatus, PostStatus, PublishStatus
 from app.models.operations import NotificationOutbox, RefreshSession, ResourceLease, TelegramUpdate
 from app.models.post import CommentAction, DiscoveredPost, PostPublish
 from app.services.notification_service import NotificationService, strip_markdown
-from app.services.outbox_service import bot_scope
+from app.services.discord_service import DiscordService
+from app.services.outbox_service import bot_scope, delivery_scope
 from app.workers.celery_app import celery_app, run_async
 
 
@@ -36,24 +37,34 @@ async def recover_stale_jobs() -> dict:
     return counts
 
 
-async def deliver_notifications(notifier=None) -> dict:
+async def deliver_notifications(notifier=None, discord=None) -> dict:
     notifier = notifier or NotificationService()
-    if not notifier.enabled:
+    discord = discord or DiscordService()
+    enabled_scopes = {}
+    if notifier.enabled:
+        enabled_scopes["telegram"] = bot_scope(notifier.bot_token)
+    if discord.enabled:
+        enabled_scopes["discord_webhook"] = delivery_scope("discord_webhook")
+    if not enabled_scopes:
         return {"sent": 0, "disabled": True}
-    scope = bot_scope(notifier.bot_token)
     async with get_session_factory()() as db:
         ids = list((await db.scalars(select(NotificationOutbox.id).where(
-            NotificationOutbox.status == "pending", NotificationOutbox.bot_scope == scope,
+            NotificationOutbox.status == "pending",
             NotificationOutbox.next_attempt_at <= utcnow(),
             NotificationOutbox.attempts < 5,
+            NotificationOutbox.channel.in_(list(enabled_scopes)),
         ).order_by(NotificationOutbox.next_attempt_at).limit(20))).all())
     sent = 0
     for notification_id in ids:
         async with get_session_factory()() as db:
+            message = await db.get(NotificationOutbox, notification_id)
+            if message is None or message.channel not in enabled_scopes:
+                continue
             claim = await db.execute(update(NotificationOutbox).where(
                 NotificationOutbox.id == notification_id, NotificationOutbox.status == "pending",
                 NotificationOutbox.next_attempt_at <= utcnow(), NotificationOutbox.attempts < 5,
-            ).values(
+                NotificationOutbox.bot_scope == enabled_scopes[message.channel],
+            ).execution_options(synchronize_session=False).values(
                 status="sending", attempts=NotificationOutbox.attempts + 1,
                 lease_expires_at=utcnow() + timedelta(minutes=2),
             ))
@@ -61,10 +72,13 @@ async def deliver_notifications(notifier=None) -> dict:
                 await db.rollback()
                 continue
             await db.commit()
-            message = await db.get(NotificationOutbox, notification_id)
+            await db.refresh(message)
             payload = dict(message.payload)
-            result = await notifier._call("sendMessage", payload)
-            if result and result.get("ok") is False and result.get("status") == 400 and payload.get("parse_mode"):
+            if message.channel == "discord_webhook":
+                result = await discord.send_payload(payload)
+            else:
+                result = await notifier._call("sendMessage", payload)
+            if message.channel == "telegram" and result and result.get("ok") is False and result.get("status") == 400 and payload.get("parse_mode"):
                 payload.pop("parse_mode")
                 payload["text"] = strip_markdown(payload["text"])
                 result = await notifier._call("sendMessage", payload)
@@ -78,9 +92,13 @@ async def deliver_notifications(notifier=None) -> dict:
                         DiscoveredPost.id == message.post_id,
                         DiscoveredPost.status == PostStatus.NOTIFICATION_PENDING.value,
                     ).values(status=PostStatus.NOTIFIED.value, notified_at=utcnow()))
+            elif message.channel == "discord_webhook" and result and result.get("status") == 429:
+                message.status = "pending"
+                message.last_error = "discord_rate_limited"
+                message.next_attempt_at = utcnow() + timedelta(seconds=result.get("retry_after", 30))
             else:
                 message.status = "failed" if message.attempts >= 5 else "pending"
-                message.last_error = "telegram_delivery_failed"
+                message.last_error = f"{message.channel}_delivery_failed"
                 message.next_attempt_at = utcnow() + timedelta(seconds=min(3600, 30 * 2 ** message.attempts))
             await db.commit()
     return {"sent": sent}

@@ -27,6 +27,7 @@ celery_app = Celery(
         "app.workers.publisher_task",
         "app.workers.preflight_task",
         "app.workers.maintenance_task",
+        "app.workers.interaction_task",
     ],
 )
 
@@ -66,6 +67,10 @@ celery_app.conf.beat_schedule = {
     },
     "health-check-clones": {
         "task": "app.workers.health_check_task.check_all_clones",
+        "schedule": 1800.0,
+    },
+    "health-check-jobs": {
+        "task": "app.workers.health_check_task.check_job_health_task",
         "schedule": 1800.0,
     },
     "wake-cooldowns": {

@@ -17,6 +17,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.campaign import Campaign, CampaignGroup
+from app.models.base import utcnow
 from app.models.enums import LeadStatus
 from app.models.lead import CommentLead
 from app.models.user import User
@@ -166,13 +167,32 @@ async def notify_leads(
     Không có lead mới, hoặc user chưa liên kết Telegram → không làm gì.
     Trả về ``True`` nếu đã gọi ``send_text``.
     """
-    if not leads or user is None or not user.telegram_chat_id:
+    if not leads or user is None:
         return False
     if db is not None:
         from app.services.outbox_service import queue_text
 
-        await queue_text(db, user.telegram_chat_id, lead_summary(campaign_name, leads))
-        return True
+        from app.services.notification_service import notify_handoff
+
+        notified = False
+        if user.telegram_chat_id:
+            await queue_text(db, user.telegram_chat_id, lead_summary(campaign_name, leads))
+            notified = True
+
+        first_lead = leads[0]
+        link = getattr(first_lead, "comment_url", "") or getattr(first_lead, "post_url", "")
+        queued = await notify_handoff(
+            db,
+            user_id=user.id,
+            event_type="lead",
+            summary=lead_summary(campaign_name, leads),
+            source="COMMENT_LEAD",
+            occurred_at=utcnow(),
+            link=link,
+        )
+        return notified or queued > 0
+    if not user.telegram_chat_id:
+        return False
     notifier = notifier or NotificationService()
     await notifier.send_text(
         user.telegram_chat_id, lead_summary(campaign_name, leads)
