@@ -2,7 +2,7 @@
 fastapi==0.141.1
 uvicorn[standard]==0.52.4
 pydantic==2.13.5
-pydantic-settings==2.13.0
+pydantic-settings==2.14.2
 email-validator==2.3.0
 python-multipart==0.0.32
 
@@ -13,9 +13,9 @@ asyncpg==0.31.0
 aiosqlite==0.22.1
 
 # --- Auth & bao mat ---
-PyJWT==2.13.0
+PyJWT==2.15.0
 bcrypt==5.0.0
-cryptography==46.0.4
+cryptography==50.0.0
 
 # --- Hang doi nen (che do SaaS: Celery + Redis) ---
 celery==5.6.3
